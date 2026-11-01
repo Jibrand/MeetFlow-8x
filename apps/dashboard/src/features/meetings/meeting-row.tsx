@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router';
 import { MeetingItem } from '../../types/meeting';
 import {
   MeetingStatusBadge,
-  SpeakerAvatar,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -13,6 +12,7 @@ import {
 } from '@meetflow/ui';
 import { Video, MoreHorizontal, CheckSquare, Bookmark, Share2 } from 'lucide-react';
 import { formatDuration, formatMeetingDate, PLATFORM_LABEL } from '../../lib/meeting-format';
+import { ParticipantOverflow } from '../meeting-detail/components/participant-overflow';
 
 export interface MeetingRowProps {
   meeting: MeetingItem;
@@ -72,17 +72,8 @@ export function MeetingRow({ meeting }: MeetingRowProps) {
 
       {/* Right Column: Avatars, Status, Actions */}
       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border">
-        {/* Participant Stack */}
-        <div className="flex items-center -space-x-1.5 overflow-hidden">
-          {meeting.participants.slice(0, 4).map((p) => (
-            <SpeakerAvatar key={p.id} name={p.name} size="xs" />
-          ))}
-          {meeting.participants.length > 4 && (
-            <div className="flex h-5 w-5 items-center justify-center rounded-full border bg-secondary text-[8px] font-bold text-muted-foreground select-none">
-              +{meeting.participants.length - 4}
-            </div>
-          )}
-        </div>
+        {/* Participant Overflow Stack */}
+        <ParticipantOverflow participants={meeting.participants} maxVisible={4} size="xs" />
 
         {/* Status Badge */}
         <MeetingStatusBadge status={meeting.status} />

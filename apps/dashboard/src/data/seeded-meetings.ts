@@ -26,6 +26,8 @@ export const SEEDED_MEETINGS: MeetingItem[] = [
     highlightCount: 2,
     hasRecording: true,
     hasTranscript: true,
+    hasVideo: true,
+    videoUrl: '/recordings/demo-meeting.mp4',
     summary: {
       executiveSummary:
         'The team aligned on adopting Neon serverless PostgreSQL with connection pooling. The API middleware pipeline will enforce 1MB body limits and structured JSON telemetry. Transcript seeking is configured with indexed timestamp offsets.',

@@ -192,6 +192,7 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
         <div className="lg:col-span-8 space-y-5">
           {/* Recording Player */}
           <RecordingPlayer
+            videoSrc={meeting.videoUrl}
             isVerifiedAudio={meeting.isVerifiedAudio}
             isPlaying={player.isPlaying}
             currentTime={player.currentTime}
@@ -208,9 +209,9 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
           />
 
           {/* Primary Content Tabs: Summary | Transcript | Ask AI */}
-          <div className="w-full space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-2">
-              <div className="inline-flex h-8 items-center justify-center rounded-lg bg-muted/60 p-1 text-muted-foreground">
+          <div className="w-full rounded-xl border border-border bg-card shadow-xs overflow-hidden flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border bg-muted/40 px-3.5 py-2.5">
+              <div className="inline-flex h-8 items-center justify-center rounded-lg bg-secondary/80 p-1 text-muted-foreground">
                 <button
                   type="button"
                   role="tab"
@@ -218,7 +219,7 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
                   onClick={() => setActiveTab('summary')}
                   className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all gap-1.5 select-none ${
                     activeTab === 'summary'
-                      ? 'bg-background text-foreground shadow-xs font-semibold'
+                      ? 'bg-card text-primary font-semibold shadow-2xs'
                       : 'hover:text-foreground'
                   }`}
                 >
@@ -232,7 +233,7 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
                   onClick={() => setActiveTab('transcript')}
                   className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all gap-1.5 select-none ${
                     activeTab === 'transcript'
-                      ? 'bg-background text-foreground shadow-xs font-semibold'
+                      ? 'bg-card text-primary font-semibold shadow-2xs'
                       : 'hover:text-foreground'
                   }`}
                 >
@@ -246,7 +247,7 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
                   onClick={() => setActiveTab('ask')}
                   className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all gap-1.5 select-none ${
                     activeTab === 'ask'
-                      ? 'bg-background text-foreground shadow-xs font-semibold'
+                      ? 'bg-card text-primary font-semibold shadow-2xs'
                       : 'hover:text-foreground'
                   }`}
                 >
@@ -263,26 +264,28 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
               )}
             </div>
 
-            {activeTab === 'summary' && (
-              <SummaryPanel
-                template={currentTemplate}
-                onSeek={handleSeekAndSwitchToTranscript}
-              />
-            )}
+            <div className="p-4 flex-1">
+              {activeTab === 'summary' && (
+                <SummaryPanel
+                  template={currentTemplate}
+                  onSeek={handleSeekAndSwitchToTranscript}
+                />
+              )}
 
-            {activeTab === 'transcript' && (
-              <TranscriptPanel
-                turns={meeting.transcriptTurns || []}
-                currentTime={player.currentTime}
-                isPlaying={player.isPlaying}
-                onSeek={handleSeek}
-                onAddHighlightAtTurn={handleAddHighlightAtTurn}
-              />
-            )}
+              {activeTab === 'transcript' && (
+                <TranscriptPanel
+                  turns={meeting.transcriptTurns || []}
+                  currentTime={player.currentTime}
+                  isPlaying={player.isPlaying}
+                  onSeek={handleSeek}
+                  onAddHighlightAtTurn={handleAddHighlightAtTurn}
+                />
+              )}
 
-            {activeTab === 'ask' && (
-              <AskMeetingPanel meeting={meeting} onSeek={handleSeek} />
-            )}
+              {activeTab === 'ask' && (
+                <AskMeetingPanel meeting={meeting} onSeek={handleSeek} />
+              )}
+            </div>
           </div>
         </div>
 

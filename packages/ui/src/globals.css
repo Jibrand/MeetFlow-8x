@@ -5,80 +5,80 @@
 @layer base {
   /* Honey, Black & White — Light */
   :root {
-    --background: 0 0% 100%;            /* #FFFFFF */
-    --foreground: 0 0% 7%;              /* #111111 */
-    --card: 0 0% 100%;                  /* #FFFFFF */
-    --card-foreground: 0 0% 7%;
+    --background: 220 17% 98%;          /* App canvas: #F8F9FB */
+    --foreground: 240 10% 10%;          /* Main text: #18181B */
+    --card: 0 0% 100%;                  /* Main content surface: #FFFFFF */
+    --card-foreground: 240 10% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 7%;
-    --primary: 32 95% 44%;              /* Honey #D97706 */
-    --primary-foreground: 0 0% 7%;
-    --secondary: 0 0% 96%;              /* #F5F5F5 */
-    --secondary-foreground: 0 0% 7%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 240 4% 46%;     /* #71717A */
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 7%;
+    --popover-foreground: 240 10% 10%;
+    --primary: 38 92% 44%;              /* Honey accent: #D97706 */
+    --primary-foreground: 0 0% 100%;    /* Crisp contrast white */
+    --secondary: 210 20% 96%;           /* Subtle nested surfaces: #F3F4F6 */
+    --secondary-foreground: 240 10% 10%;
+    --muted: 210 20% 96%;               /* Subtle nested surfaces: #F3F4F6 */
+    --muted-foreground: 240 5% 46%;     /* Secondary text: #71717A */
+    --accent: 60 5% 96%;                /* Hover: #F5F5F4 */
+    --accent-foreground: 240 10% 10%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 90%;                 /* #E5E5E5 */
-    --input: 0 0% 90%;
-    --ring: 32 95% 44%;
+    --border: 240 6% 90%;               /* Border: #E4E4E7 */
+    --input: 240 6% 90%;
+    --ring: 38 92% 44%;
     --radius: 0.5rem;
 
     /* Semantic Surface & Sidebar Tokens */
-    --elevated: 0 0% 96%;               /* #F5F5F5 */
-    --surface-base: 0 0% 100%;
-    --surface-elevated: 0 0% 96%;
-    --surface-hover: 0 0% 96%;
-    --surface-active: 0 0% 93%;
-    --sidebar-background: 0 0% 98%;     /* #FAFAFA */
-    --sidebar-foreground: 0 0% 7%;
-    --sidebar-border: 0 0% 90%;
-    --sidebar-hover: 0 0% 94%;
-    --sidebar-active: 32 95% 44% / 0.1;
+    --elevated: 210 20% 96%;            /* #F3F4F6 */
+    --surface-base: 220 17% 98%;        /* #F8F9FB */
+    --surface-elevated: 0 0% 100%;      /* #FFFFFF */
+    --surface-hover: 60 5% 96%;         /* #F5F5F4 */
+    --surface-active: 210 20% 92%;
+    --sidebar-background: 0 0% 100%;    /* Sidebar: #FFFFFF */
+    --sidebar-foreground: 240 10% 10%;  /* #18181B */
+    --sidebar-border: 240 6% 90%;       /* #E4E4E7 */
+    --sidebar-hover: 60 5% 96%;         /* #F5F5F4 */
+    --sidebar-active: 38 92% 44% / 0.12;
 
-    --scrollbar-thumb: 0 0% 0% / 0.14;
-    --scrollbar-thumb-hover: 0 0% 0% / 0.28;
+    --scrollbar-thumb: 240 5% 46% / 0.2;
+    --scrollbar-thumb-hover: 240 5% 46% / 0.35;
     color-scheme: light;
   }
 
   /* Honey, Black & White — Dark */
   .dark {
-    --background: 240 8% 5%;            /* #0B0B0D */
-    --foreground: 0 0% 98%;             /* #FAFAFA */
-    --card: 240 4% 9%;                  /* #171719 */
+    --background: 240 10% 4%;           /* App canvas: #09090B */
+    --foreground: 0 0% 98%;             /* Main text: #FAFAFA */
+    --card: 240 6% 10%;                 /* Main content surfaces: #18181B */
     --card-foreground: 0 0% 98%;
-    --popover: 240 5% 13%;              /* #202023 */
+    --popover: 240 6% 14%;              /* Nested surfaces: #222226 */
     --popover-foreground: 0 0% 98%;
-    --primary: 32 95% 44%;              /* Honey #D97706 */
-    --primary-foreground: 0 0% 7%;
-    --secondary: 240 5% 13%;            /* #202023 */
+    --primary: 38 92% 44%;              /* Honey accent: #D97706 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 6% 14%;            /* Nested surfaces: #222226 */
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 5% 13%;
-    --muted-foreground: 240 5% 65%;     /* #A1A1AA */
-    --accent: 240 5% 13%;
+    --muted: 240 6% 14%;                /* Nested surfaces: #222226 */
+    --muted-foreground: 240 5% 65%;     /* Secondary text: #A1A1AA */
+    --accent: 240 4% 16%;               /* Hover: #27272A */
     --accent-foreground: 0 0% 98%;
     --destructive: 0 63% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 17%;               /* #29292E */
-    --input: 240 6% 17%;
-    --ring: 32 95% 44%;
+    --border: 240 6% 20%;               /* Border: #303036 */
+    --input: 240 6% 20%;
+    --ring: 38 92% 44%;
 
     /* Semantic Surface & Sidebar Tokens (Dark) */
-    --elevated: 240 5% 13%;             /* #202023 */
-    --surface-base: 240 8% 5%;
-    --surface-elevated: 240 5% 13%;
-    --surface-hover: 240 5% 12%;
-    --surface-active: 240 5% 15%;
-    --sidebar-background: 240 6% 7%;    /* #111113 */
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-border: 240 6% 15%;
-    --sidebar-hover: 240 5% 12%;
-    --sidebar-active: 32 95% 44% / 0.12;
+    --elevated: 240 6% 14%;             /* #222226 */
+    --surface-base: 240 10% 4%;         /* #09090B */
+    --surface-elevated: 240 6% 10%;     /* #18181B */
+    --surface-hover: 240 4% 16%;        /* #27272A */
+    --surface-active: 240 6% 18%;
+    --sidebar-background: 240 6% 7%;    /* Sidebar: #111113 */
+    --sidebar-foreground: 0 0% 98%;     /* #FAFAFA */
+    --sidebar-border: 240 6% 20%;       /* #303036 */
+    --sidebar-hover: 240 4% 16%;        /* #27272A */
+    --sidebar-active: 38 92% 44% / 0.15;
 
-    --scrollbar-thumb: 0 0% 100% / 0.12;
-    --scrollbar-thumb-hover: 0 0% 100% / 0.24;
+    --scrollbar-thumb: 0 0% 100% / 0.15;
+    --scrollbar-thumb-hover: 0 0% 100% / 0.3;
     color-scheme: dark;
   }
 }

@@ -3,7 +3,6 @@ import { MeetingItem, SummaryTemplateContent } from '../../../types/meeting';
 import {
   MeetingStatusBadge,
   MeetingMetadata,
-  SpeakerAvatar,
   Badge,
   Button,
   DropdownMenu,
@@ -11,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@meetflow/ui';
+import { ParticipantOverflow } from './participant-overflow';
 import {
   ArrowLeft,
   Share2,
@@ -173,20 +173,10 @@ export function MeetingHeader({
         />
       </div>
 
-      {/* Participants Row */}
+      {/* Participants Row with Overflow Popover */}
       <div className="flex items-center gap-2 pt-0.5">
-        <span className="text-label text-muted-foreground">Participants:</span>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {meeting.participants.map((p) => (
-            <div
-              key={p.id}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2 py-0.5 text-xs text-foreground select-none"
-            >
-              <SpeakerAvatar name={p.name} size="xs" />
-              <span className="text-[11px] font-medium">{p.name}</span>
-            </div>
-          ))}
-        </div>
+        <span className="text-xs text-muted-foreground">Participants:</span>
+        <ParticipantOverflow participants={meeting.participants} maxVisible={4} size="sm" />
       </div>
     </div>
   );

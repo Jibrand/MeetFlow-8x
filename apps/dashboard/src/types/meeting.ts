@@ -99,6 +99,8 @@ export interface MeetingItem {
   hasTranscript: boolean;
   recordingUrl?: string;
   isVerifiedAudio?: boolean;
+  videoUrl?: string;
+  hasVideo?: boolean;
   summary?: MeetingSummary;
   transcriptTurns?: TranscriptTurnItem[];
   actionItems?: ActionItemData[];

@@ -7,7 +7,7 @@ import { useActionItems, isOverdue, parseDueDate } from '../actions/use-action-i
 import { toggleActionItemCompleted } from '../meeting-detail/lib/action-items-store';
 import { formatDuration, formatMeetingDate } from '../../lib/meeting-format';
 import { KpiCard, SectionCard } from './overview-cards';
-import { MeetingsPerDayChart, CompletionDonut } from './overview-charts';
+import { MeetingsOverTimeChart, ActionItemDonut } from './overview-charts';
 
 export function OverviewView() {
   const actionItems = useActionItems();
@@ -34,14 +34,18 @@ export function OverviewView() {
     .slice(0, 5);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+      {/* 1. Compact Welcome Heading */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Good to see you, Jibran</h1>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">
-          Here's what's happening across your recorded meetings.
+        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          Good to see you, Jibran
+        </h1>
+        <p className="mt-0.5 text-xs sm:text-[13px] text-muted-foreground">
+          Real-time meeting intelligence and action items overview.
         </p>
       </div>
 
+      {/* 2. Four KPI Cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="Total meetings" value={SEEDED_MEETINGS.length} hint={`${recorded.length} recorded`} icon={Video} />
         <KpiCard label="Recorded hours" value={hours.toFixed(1)} hint="Across ready & processing" icon={Clock} />
@@ -49,6 +53,17 @@ export function OverviewView() {
         <KpiCard label="Completed" value={doneCount} hint={`of ${actionItems.length} total`} icon={CheckCircle2} />
       </div>
 
+      {/* 3. Analytics Row (Recharts) placed near the top */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <SectionCard title="Meetings over time (Past 7 Days)">
+          <MeetingsOverTimeChart meetings={SEEDED_MEETINGS} now={now} />
+        </SectionCard>
+        <SectionCard title="Action item resolution">
+          <ActionItemDonut items={actionItems} />
+        </SectionCard>
+      </div>
+
+      {/* 4. Recent Meetings and Action Items */}
       <div className="grid gap-4 lg:grid-cols-3">
         <SectionCard title="Recent meetings" action={{ label: 'View all', to: '/' }} className="lg:col-span-2">
           <ul className="-mx-2 divide-y divide-border">
@@ -57,12 +72,14 @@ export function OverviewView() {
                 <Link
                   to="/meetings/$meetingId"
                   params={{ meetingId: m.id }}
-                  className="flex items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-accent"
+                  className="flex items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-secondary/60"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium">{m.title}</p>
+                    <p className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {m.title}
+                    </p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {formatMeetingDate(m.startDate)} · {formatDuration(m.durationSeconds)} · {m.participants.length} people
+                      {formatMeetingDate(m.startDate)} · {formatDuration(m.durationSeconds)} · {m.participants.length} participants
                     </p>
                   </div>
                   <div className="hidden -space-x-1.5 sm:flex">
@@ -111,32 +128,24 @@ export function OverviewView() {
         </SectionCard>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <SectionCard title="Meetings this week">
-          <MeetingsPerDayChart meetings={SEEDED_MEETINGS} now={now} />
-        </SectionCard>
-        <SectionCard title="Action item status">
-          <CompletionDonut items={actionItems} overdueCount={overdue.length} />
-        </SectionCard>
-        <SectionCard title="Recent activity">
-          <ul className="space-y-2.5">
-            {activity.map((m) => {
-              const Icon = m.status === 'failed' ? XCircle : m.status === 'processing' ? Sparkles : CheckCircle2;
-              const verb = m.status === 'failed' ? 'Processing failed' : m.status === 'processing' ? 'Processing' : 'Summary ready';
-              return (
-                <li key={m.id} className="flex gap-2 text-xs">
-                  <Icon className={m.status === 'failed' ? 'mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive' : 'mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground'} />
-                  <span className="min-w-0">
-                    <span className="text-muted-foreground">{verb} · </span>
-                    <span className="font-medium">{m.title}</span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-3 text-[10px] text-muted-foreground">Derived from seeded meeting statuses.</p>
-        </SectionCard>
-      </div>
+      {/* 5. Recent Activity */}
+      <SectionCard title="Recent activity">
+        <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {activity.map((m) => {
+            const Icon = m.status === 'failed' ? XCircle : m.status === 'processing' ? Sparkles : CheckCircle2;
+            const verb = m.status === 'failed' ? 'Processing failed' : m.status === 'processing' ? 'Processing' : 'Summary ready';
+            return (
+              <li key={m.id} className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 p-2.5 text-xs">
+                <Icon className={m.status === 'failed' ? 'mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive' : 'mt-0.5 h-3.5 w-3.5 shrink-0 text-primary'} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-muted-foreground">{verb}</p>
+                  <p className="truncate text-xs font-medium text-foreground">{m.title}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </SectionCard>
     </div>
   );
 }

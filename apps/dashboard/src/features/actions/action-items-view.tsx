@@ -9,6 +9,9 @@ import {
   subscribeToActionItemChanges,
 } from '../meeting-detail/lib/action-items-store';
 import { isOverdue } from './use-action-items';
+import { Pagination } from '../../components/ui/pagination';
+
+const PAGE_SIZE = 8;
 
 export function ActionItemsView() {
   const [actionItems, setActionItems] = React.useState<ActionItemData[]>(() =>
@@ -24,7 +27,13 @@ export function ActionItemsView() {
 
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState<'all' | 'open' | 'completed' | 'overdue'>('all');
+  const [currentPage, setCurrentPage] = React.useState(1);
   const now = React.useMemo(() => new Date(), []);
+
+  // Reset page when filter or search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, search]);
 
   const handleToggle = (id: string, completed: boolean) => {
     toggleActionItemCompleted(id, completed);
@@ -57,6 +66,13 @@ export function ActionItemsView() {
     });
   }, [actionItems, filter, search, now]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedItems = React.useMemo(() => {
+    const start = (safeCurrentPage - 1) * PAGE_SIZE;
+    return filteredItems.slice(start, start + PAGE_SIZE);
+  }, [filteredItems, safeCurrentPage]);
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Header */}
@@ -82,7 +98,7 @@ export function ActionItemsView() {
         </div>
 
         {/* Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-secondary/60 p-1 rounded-lg border border-border">
+        <div className="flex flex-wrap items-center gap-1.5 bg-secondary/80 p-1 rounded-lg border border-border">
           <Button
             variant={filter === 'all' ? 'default' : 'ghost'}
             size="sm"
@@ -134,35 +150,46 @@ export function ActionItemsView() {
         />
       </div>
 
-      {/* Task List */}
+      {/* Task List Workspace inside Bounded Surface */}
       {filteredItems.length > 0 ? (
-        <div className="space-y-2.5">
-          {filteredItems.map((item) => (
-            <div key={item.id} className="space-y-1">
-              <ActionItemRow
-                id={item.id}
-                title={item.title}
-                completed={item.completed}
-                onToggleCompleted={(val) => handleToggle(item.id, val)}
-                assigneeName={item.assigneeName}
-                dueDate={item.dueDate}
-                priority={item.priority}
-                timestampSeconds={item.timestampSeconds}
-              />
-              {item.meetingTitle && (
-                <div className="flex items-center gap-1.5 pl-3 text-[11px] text-muted-foreground">
-                  <span>Source:</span>
-                  <Link
-                    to="/meetings/$meetingId"
-                    params={{ meetingId: item.meetingId }}
-                    className="font-medium text-foreground/80 hover:text-primary transition-colors underline-offset-2 hover:underline truncate max-w-md"
-                  >
-                    {item.meetingTitle}
-                  </Link>
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-4">
+          <div className="divide-y divide-border">
+            {pagedItems.map((item) => (
+              <div key={item.id} className="py-3 first:pt-0 last:pb-0 space-y-1">
+                <ActionItemRow
+                  id={item.id}
+                  title={item.title}
+                  completed={item.completed}
+                  onToggleCompleted={(val) => handleToggle(item.id, val)}
+                  assigneeName={item.assigneeName}
+                  dueDate={item.dueDate}
+                  priority={item.priority}
+                  timestampSeconds={item.timestampSeconds}
+                />
+                {item.meetingTitle && (
+                  <div className="flex items-center gap-1.5 pl-3 text-[11px] text-muted-foreground">
+                    <span>Source:</span>
+                    <Link
+                      to="/meetings/$meetingId"
+                      params={{ meetingId: item.meetingId }}
+                      className="font-medium text-foreground/80 hover:text-primary transition-colors underline-offset-2 hover:underline truncate max-w-md"
+                    >
+                      {item.meetingTitle}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          <Pagination
+            currentPage={safeCurrentPage}
+            totalPages={totalPages}
+            totalItems={filteredItems.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <EmptyState

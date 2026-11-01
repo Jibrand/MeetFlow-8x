@@ -6,27 +6,50 @@ import { MeetingFilters, MeetingFiltersState } from './meeting-filters';
 import { EmptyState } from '@meetflow/ui';
 import { VideoOff } from 'lucide-react';
 import { groupMeetingsByDate } from '../../lib/meeting-format';
+import { Pagination } from '../../components/ui/pagination';
 
 export interface MeetingListProps {
   meetings: MeetingItem[];
 }
 
+const PAGE_SIZE = 9;
+const LAYOUT_STORAGE_KEY = 'meetflow-meeting-layout-preference';
+
 export function MeetingList({ meetings }: MeetingListProps) {
   const [filters, setFilters] = React.useState<MeetingFiltersState>(() => {
-    // Read from search params if available in window
+    // Read from search params or localStorage
     try {
       const params = new URLSearchParams(window.location.search);
+      const savedLayout = (localStorage.getItem(LAYOUT_STORAGE_KEY) as 'list' | 'grid') || 'grid';
       return {
         search: params.get('q') || '',
         status: (params.get('status') as MeetingFiltersState['status']) || 'all',
         platform: (params.get('platform') as MeetingFiltersState['platform']) || 'all',
         sort: (params.get('sort') as MeetingFiltersState['sort']) || 'newest',
-        layout: (params.get('layout') as 'list' | 'grid') || 'list',
+        layout: (params.get('layout') as 'list' | 'grid') || savedLayout,
       };
     } catch {
-      return { search: '', status: 'all', platform: 'all', sort: 'newest', layout: 'list' };
+      return { search: '', status: 'all', platform: 'all', sort: 'newest', layout: 'grid' };
     }
   });
+
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  // Reset page when filter criteria change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.search, filters.status, filters.platform, filters.sort]);
+
+  // Persist layout in localStorage
+  React.useEffect(() => {
+    try {
+      if (filters.layout) {
+        localStorage.setItem(LAYOUT_STORAGE_KEY, filters.layout);
+      }
+    } catch {
+      // ignore
+    }
+  }, [filters.layout]);
 
   // Sync state to URL search parameters for back/forward navigation
   React.useEffect(() => {
@@ -95,10 +118,19 @@ export function MeetingList({ meetings }: MeetingListProps) {
     return result;
   }, [meetings, filters]);
 
+  // Client-side pagination
+  const totalPages = Math.max(1, Math.ceil(filteredMeetings.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const pagedMeetings = React.useMemo(() => {
+    const start = (safeCurrentPage - 1) * PAGE_SIZE;
+    return filteredMeetings.slice(start, start + PAGE_SIZE);
+  }, [filteredMeetings, safeCurrentPage]);
+
   // Date grouped buckets for Fathom-like recording organization
   const groupedMeetings = React.useMemo(() => {
-    return groupMeetingsByDate(filteredMeetings);
-  }, [filteredMeetings]);
+    return groupMeetingsByDate(pagedMeetings);
+  }, [pagedMeetings]);
 
   const isGrid = filters.layout === 'grid';
 
@@ -141,6 +173,15 @@ export function MeetingList({ meetings }: MeetingListProps) {
               )}
             </section>
           ))}
+
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={safeCurrentPage}
+            totalPages={totalPages}
+            totalItems={filteredMeetings.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <EmptyState
