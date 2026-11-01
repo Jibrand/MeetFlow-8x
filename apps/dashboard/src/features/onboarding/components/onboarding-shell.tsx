@@ -28,13 +28,18 @@ export function OnboardingShell() {
     setWorkspaceName,
     setOrgName,
     setGoogleConnected,
+    saveWorkspaceToBackend,
+    completeOnboarding,
     reset,
   } = useOnboarding();
 
-  const handleNext = () => {
-    if (state.step === 3 && !state.workspaceName.trim()) {
-      toast.error('Please enter a workspace name');
-      return;
+  const handleNext = async () => {
+    if (state.step === 3) {
+      if (!state.workspaceName.trim()) {
+        toast.error('Please enter a workspace name');
+        return;
+      }
+      await saveWorkspaceToBackend(state.workspaceName, state.orgName);
     }
     if (state.step < TOTAL_STEPS) {
       setStep(state.step + 1);
@@ -47,7 +52,8 @@ export function OnboardingShell() {
     }
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    await completeOnboarding();
     reset();
     toast.success('Onboarding complete! Enjoy MeetFlow AI.');
     navigate({ to: '/' });

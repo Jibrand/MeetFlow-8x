@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import { healthRouter } from './health';
+import { authRouter } from '../modules/auth/auth.routes';
+import { usersRouter } from '../modules/users/users.routes';
+import { workspacesRouter } from '../modules/workspaces/workspaces.routes';
+import { onboardingRouter } from '../modules/onboarding/onboarding.routes';
 
 export const apiRouter = Router();
 
 // Root health check endpoint
 apiRouter.use('/health', healthRouter);
 
-// Versioned API namespace
+// Versioned API namespace (/api/v1)
 const v1Router = Router();
 
 v1Router.get('/', (req, res) => {
@@ -15,7 +19,7 @@ v1Router.get('/', (req, res) => {
     data: {
       name: 'MeetFlow AI API',
       version: 'v1',
-      description: 'Meeting intelligence engine backend API',
+      description: 'Production meeting intelligence engine backend API',
     },
     meta: {
       requestId: req.id,
@@ -25,4 +29,16 @@ v1Router.get('/', (req, res) => {
   });
 });
 
+v1Router.use('/auth', authRouter);
+v1Router.use('/users', usersRouter);
+v1Router.use('/workspaces', workspacesRouter);
+v1Router.use('/onboarding', onboardingRouter);
+
+// Primary versioned route: /api/v1/*
 apiRouter.use('/v1', v1Router);
+
+// Alias root namespaces for convenience: /api/auth/* -> v1Router
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/users', usersRouter);
+apiRouter.use('/workspaces', workspacesRouter);
+apiRouter.use('/onboarding', onboardingRouter);

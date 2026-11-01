@@ -23,3 +23,7 @@
 - Keep components cohesive, accessible, and high-density (Linear/Apple inspired, 100% zoom level standard).
 - Handle asynchronous errors explicitly with typed error envelopes.
 - Keep the repository clean: commit logs interleaved with the code they produced.
+
+### API Documentation Directive
+- Every future API addition, signature modification, or schema change must update both `docs/api/openapi.yaml` and `docs/api/README.md` within the same commit.
+

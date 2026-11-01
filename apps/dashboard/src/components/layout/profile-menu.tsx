@@ -30,15 +30,16 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
     return authAdapter.subscribe((u) => setUser(u));
   }, []);
 
-  const displayName = user?.name || 'Jibran';
-  const displayEmail = user?.email || 'jibran@meetflow.ai';
-  const displayInitials = displayName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() || 'JI';
-  const displayWorkspace = user?.workspace || 'MeetFlow Demo Workspace';
+  const displayName = user?.name || 'Workspace Member';
+  const displayEmail = user?.email || 'member@meetflow.ai';
+  const displayInitials = user?.initials ||
+    displayName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'MF';
+  const displayWorkspace = user?.workspace || 'My Workspace';
 
   const handleLogout = () => {
     authAdapter.logout();
@@ -140,22 +141,19 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Quick 1-click theme button in sidebar footer */}
+      {/* Quick logout action in sidebar footer */}
       {!collapsed && (
-        <div className="flex items-center gap-0.5 shrink-0">
-          <ThemeToggleButton className="h-8 w-8 text-muted-foreground hover:text-foreground" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleLogout}
-            aria-label="Sign out"
-            title="Sign out"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleLogout}
+          aria-label="Sign out"
+          title="Sign out"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </Button>
       )}
     </div>
   );

@@ -29,7 +29,7 @@ export function CompleteStep({ state, onFinish }: CompleteStepProps) {
             <Building className="h-3.5 w-3.5 text-primary" />
             <span>Workspace</span>
           </span>
-          <span className="font-semibold text-foreground">{state.workspaceName || "Jibran's Workspace"}</span>
+          <span className="font-semibold text-foreground">{state.workspaceName || "My Workspace"}</span>
         </div>
 
         <div className="flex items-center justify-between text-xs pb-2 border-b border-border/60">

@@ -1,0 +1,319 @@
+openapi: 3.1.0
+info:
+  title: MeetFlow AI Backend API
+  version: 1.0.0
+  description: >
+    Production-quality meeting intelligence engine API for MeetFlow AI.
+    Handles JWT authentication via HTTP-only cookies, workspace tenancy,
+    user profile management, and onboarding persistence backed by Neon PostgreSQL.
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local Development Server (v1)
+  - url: http://localhost:4000/api
+    description: Local Development Server (Root Namespace)
+
+paths:
+  /health:
+    get:
+      summary: API & Database Health Check
+      description: Returns real-time operational status and database connection health.
+      responses:
+        '200':
+          description: Operational health status.
+          content:
+            application/json:
+              example:
+                status: ok
+                uptime: 142.5
+                timestamp: '2026-11-02T02:00:00.000Z'
+                environment: development
+                version: v1
+                services:
+                  api: operational
+                  database: connected
+
+  /auth/register:
+    post:
+      summary: Register User & Workspace
+      description: Validates input, hashes password, transactionally provisions user and workspace, and sets HTTP-only cookies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  example: Sarah Connor
+                email:
+                  type: string
+                  format: email
+                  example: sarah@skynet.ai
+                password:
+                  type: string
+                  format: password
+                  example: Secret123!
+                workspaceName:
+                  type: string
+                  example: Tech Resistance
+      responses:
+        '201':
+          description: User and workspace created. Auth cookies set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: meetflow_access_token and meetflow_refresh_token HTTP-only cookies.
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  user:
+                    id: 'u-123'
+                    name: Sarah Connor
+                    email: sarah@skynet.ai
+                    avatarUrl: null
+                    role: MEMBER
+                  workspace:
+                    id: 'ws-123'
+                    name: Tech Resistance
+                    slug: tech-resistance-a1b2
+                    role: OWNER
+                  onboarding:
+                    completed: false
+                    currentStep: 1
+                meta:
+                  requestId: 'req-abc-123'
+                  timestamp: '2026-11-02T02:00:00.000Z'
+                  version: v1
+        '400':
+          description: Validation error.
+        '409':
+          description: Email already registered.
+
+  /auth/login:
+    post:
+      summary: Sign In
+      description: Authenticates user credentials, sets HTTP-only access and refresh cookies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: sarah@skynet.ai
+                password:
+                  type: string
+                  format: password
+                  example: Secret123!
+      responses:
+        '200':
+          description: Authentication successful.
+        '401':
+          description: Invalid email or password.
+
+  /auth/refresh:
+    post:
+      summary: Rotate Refresh Token & Issue Access Token
+      description: Reads refresh token from HTTP-only cookie, rotates session token, and issues a new access token.
+      responses:
+        '200':
+          description: Tokens refreshed and cookies updated.
+        '401':
+          description: Invalid or expired refresh token.
+
+  /auth/logout:
+    post:
+      summary: Sign Out
+      description: Revokes active refresh session in database and clears authentication cookies.
+      responses:
+        '200':
+          description: Successfully signed out.
+
+  /auth/me:
+    get:
+      summary: Get Current Authenticated User & Workspace
+      description: Returns active user profile, workspace role, and onboarding progress.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User session details.
+        '401':
+          description: Authentication required.
+
+  /auth/forgot-password:
+    post:
+      summary: Initiate Password Reset
+      description: Generates a secure one-time reset token with 1-hour expiration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Generic confirmation response.
+
+  /auth/reset-password:
+    post:
+      summary: Complete Password Reset
+      description: Validates one-time token, updates password hash, and invalidates all existing sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Password reset successfully.
+        '400':
+          description: Invalid or expired reset token.
+
+  /users/me:
+    get:
+      summary: Get Current User Profile
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User profile.
+    patch:
+      summary: Update Personal Profile
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated.
+
+  /workspaces/current:
+    get:
+      summary: Get Current Workspace
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Workspace details and user membership role.
+    patch:
+      summary: Update Current Workspace
+      description: Requires OWNER or ADMIN role.
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                organizationName:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Workspace updated.
+        '403':
+          description: Forbidden (insufficient role).
+
+  /onboarding:
+    get:
+      summary: Get Onboarding State
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Onboarding progress and persisted selections.
+    patch:
+      summary: Save Onboarding Selections
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                professionalRole:
+                  type: string
+                primaryUseCases:
+                  type: array
+                  items:
+                    type: string
+                currentStep:
+                  type: integer
+      responses:
+        '200':
+          description: Selections saved.
+
+  /onboarding/workspace:
+    post:
+      summary: Provision / Update Workspace during Onboarding
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspaceName]
+              properties:
+                workspaceName:
+                  type: string
+                orgName:
+                  type: string
+      responses:
+        '200':
+          description: Workspace configured and step advanced.
+
+  /onboarding/complete:
+    post:
+      summary: Mark Onboarding Completed
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Onboarding marked completed.
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: meetflow_access_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

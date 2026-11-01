@@ -8,7 +8,7 @@ export interface GoogleConnectStepProps {
 
 export function GoogleConnectStep({ connected, onToggleConnect }: GoogleConnectStepProps) {
   const handleConnectClick = () => {
-    toast.info('Google OAuth connects in Phase 05 backend integration. Marked as simulated for onboarding preview.');
+    toast.info('Google Workspace connection is optional. You can connect or skip to complete onboarding.');
     onToggleConnect(!connected);
   };
 

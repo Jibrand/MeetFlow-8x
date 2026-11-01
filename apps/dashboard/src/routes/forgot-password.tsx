@@ -57,12 +57,9 @@ function ForgotPasswordPage() {
           <div className="space-y-1">
             <h4 className="text-sm font-semibold text-foreground">Check your inbox</h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              We have sent password recovery instructions to <strong className="text-foreground">{email}</strong>.
+              If an account exists for <strong className="text-foreground">{email}</strong>, you will receive password reset instructions.
             </p>
           </div>
-          <p className="text-[11px] text-muted-foreground pt-2">
-            In evaluation mode, you can also sign in instantly using the demo evaluator button on the login screen.
-          </p>
           <Button asChild variant="outline" className="w-full h-8 text-xs mt-3">
             <Link to="/login">Return to login</Link>
           </Button>

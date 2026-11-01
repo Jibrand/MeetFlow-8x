@@ -1,17 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOnboarding } from './hooks/use-onboarding';
+
+vi.mock('../../../lib/api-client', () => ({
+  apiClient: vi.fn().mockResolvedValue({}),
+}));
 
 describe('useOnboarding', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    vi.clearAllMocks();
   });
 
   it('initializes with default role and step 1', () => {
     const { result } = renderHook(() => useOnboarding());
     expect(result.current.state.step).toBe(1);
     expect(result.current.state.role).toBe('Engineering');
-    expect(result.current.state.workspaceName).toBe("Jibran's Workspace");
+    expect(result.current.state.workspaceName).toBe('My Workspace');
   });
 
   it('updates role and advances step', () => {
@@ -58,6 +63,6 @@ describe('useOnboarding', () => {
     });
 
     expect(result.current.state.step).toBe(1);
-    expect(result.current.state.workspaceName).toBe("Jibran's Workspace");
+    expect(result.current.state.workspaceName).toBe('My Workspace');
   });
 });

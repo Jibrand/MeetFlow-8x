@@ -16,7 +16,7 @@ function LoginPage() {
       subtitle="Sign in to your MeetFlow AI workspace to review your meeting intelligence."
       footer={
         <p>
-          Don't have an account?{' '}
+          Don't have a workspace?{' '}
           <Link to="/register" className="font-semibold text-primary hover:underline">
             Create workspace
           </Link>

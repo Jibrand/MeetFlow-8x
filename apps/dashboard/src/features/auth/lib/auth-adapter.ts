@@ -1,3 +1,5 @@
+import { apiClient, ApiError } from '../../../lib/api-client';
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -5,29 +7,29 @@ export interface AuthUser {
   initials: string;
   role: string;
   workspace: string;
+  workspaceId?: string;
+  organizationName?: string | null;
+  onboardingCompleted?: boolean;
+  onboardingStep?: number;
 }
 
-export const DEFAULT_DEMO_USER: AuthUser = {
-  id: 'u1',
-  name: 'Jibran',
-  email: 'jibran@meetflow.ai',
-  initials: 'JI',
-  role: 'Staff Product Engineer',
-  workspace: 'MeetFlow Demo Workspace',
-};
-
-const AUTH_STORAGE_KEY = 'meetflow-demo-session';
+const AUTH_STORAGE_KEY = 'meetflow-session-cache';
 type AuthListener = (user: AuthUser | null) => void;
 
 class AuthAdapter {
   private listeners = new Set<AuthListener>();
   private currentUser: AuthUser | null;
+  private initialized = false;
 
   constructor() {
-    this.currentUser = this.loadInitialUser();
+    this.currentUser = this.loadCachedUser();
+    // Verify session asynchronously with server
+    if (typeof window !== 'undefined') {
+      this.syncSessionWithServer();
+    }
   }
 
-  private loadInitialUser(): AuthUser | null {
+  private loadCachedUser(): AuthUser | null {
     try {
       const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
@@ -36,8 +38,7 @@ class AuthAdapter {
     } catch {
       // sessionStorage unavailable
     }
-    // Default to demo user so evaluators can inspect protected routes seamlessly
-    return DEFAULT_DEMO_USER;
+    return null;
   }
 
   getUser(): AuthUser | null {
@@ -52,76 +53,139 @@ class AuthAdapter {
     return this.currentUser !== null;
   }
 
-  /**
-   * Clearly labeled demo login.
-   * Does NOT persist raw passwords or fake JWTs to localStorage/cookies.
-   */
-  async login(email: string, _password?: string): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
-    await new Promise((r) => setTimeout(r, 300));
+  isInitialized(): boolean {
+    return this.initialized;
+  }
 
-    if (!email.includes('@')) {
-      return { success: false, error: 'Please enter a valid email address.' };
+  async syncSessionWithServer(): Promise<AuthUser | null> {
+    try {
+      const data = await apiClient<{
+        user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
+        workspace: { id: string; name: string; slug: string; role: string; organizationName?: string | null };
+        onboarding: { completed: boolean; currentStep: number; professionalRole?: string; primaryUseCases?: string[] };
+      }>('/auth/me');
+
+      const user: AuthUser = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        initials: this.formatInitials(data.user.name),
+        role: data.workspace?.role || data.user.role,
+        workspace: data.workspace?.name || `${data.user.name}'s Workspace`,
+        workspaceId: data.workspace?.id,
+        organizationName: data.workspace?.organizationName,
+        onboardingCompleted: data.onboarding?.completed,
+        onboardingStep: data.onboarding?.currentStep,
+      };
+
+      this.setUser(user);
+      this.initialized = true;
+      return user;
+    } catch {
+      // If 401 or network error when checking session, clear if session was invalid
+      this.currentUser = null;
+      try {
+        sessionStorage.removeItem(AUTH_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+      this.notify();
+      this.initialized = true;
+      return null;
+    }
+  }
+
+  async login(
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
+    try {
+      const data = await apiClient<{
+        user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
+        workspace: { id: string; name: string; slug: string; role: string; organizationName?: string | null };
+        onboarding: { completed: boolean; currentStep: number };
+      }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+
+      const user: AuthUser = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        initials: this.formatInitials(data.user.name),
+        role: data.workspace?.role || data.user.role,
+        workspace: data.workspace?.name || `${data.user.name}'s Workspace`,
+        workspaceId: data.workspace?.id,
+        organizationName: data.workspace?.organizationName,
+        onboardingCompleted: data.onboarding?.completed,
+        onboardingStep: data.onboarding?.currentStep,
+      };
+
+      this.setUser(user);
+      return { success: true, user };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err instanceof ApiError ? err.message : 'Invalid email or password.',
+      };
+    }
+  }
+
+  async register(
+    name: string,
+    email: string,
+    password?: string,
+    workspaceName?: string
+  ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
+    try {
+      const data = await apiClient<{
+        user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
+        workspace: { id: string; name: string; slug: string; role: string };
+        onboarding: { completed: boolean; currentStep: number };
+      }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, workspaceName }),
+      });
+
+      const user: AuthUser = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        initials: this.formatInitials(data.user.name),
+        role: data.workspace?.role || 'OWNER',
+        workspace: data.workspace?.name || `${name}'s Workspace`,
+        workspaceId: data.workspace?.id,
+        onboardingCompleted: false,
+        onboardingStep: 1,
+      };
+
+      this.setUser(user);
+      return { success: true, user };
+    } catch (err: any) {
+      return {
+        success: false,
+        error:
+          err instanceof ApiError
+            ? err.message
+            : 'Unable to create workspace account. Please try again.',
+      };
+    }
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await apiClient('/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network errors on logout
     }
 
-    const name = email.split('@')[0];
-    const user: AuthUser = {
-      id: `u-${Date.now()}`,
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      email: email.toLowerCase(),
-      initials: name.slice(0, 2).toUpperCase(),
-      role: 'Product Engineer',
-      workspace: `${name.charAt(0).toUpperCase() + name.slice(1)}'s Workspace`,
-    };
-
-    this.setUser(user);
-    return { success: true, user };
-  }
-
-  loginAsDemoUser(): AuthUser {
-    this.setUser(DEFAULT_DEMO_USER);
-    return DEFAULT_DEMO_USER;
-  }
-
-  loginAsDemo(): AuthUser {
-    return this.loginAsDemoUser();
-  }
-
-  async register(name: string, email: string, _password?: string): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
-    await new Promise((r) => setTimeout(r, 300));
-
-    if (!name.trim()) {
-      return { success: false, error: 'Name is required.' };
-    }
-    if (!email.includes('@')) {
-      return { success: false, error: 'Please enter a valid work email.' };
-    }
-
-    const initials = name
-      .split(' ')
-      .map((p) => p[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-
-    const user: AuthUser = {
-      id: `u-${Date.now()}`,
-      name: name.trim(),
-      email: email.toLowerCase(),
-      initials: initials || 'MF',
-      role: 'Member',
-      workspace: `${name.trim()}'s Workspace`,
-    };
-
-    this.setUser(user);
-    return { success: true, user };
-  }
-
-  logout(): void {
     try {
       sessionStorage.removeItem(AUTH_STORAGE_KEY);
     } catch {
       // ignore
     }
+
     this.currentUser = null;
     this.notify();
   }
@@ -143,6 +207,17 @@ class AuthAdapter {
 
   private notify(): void {
     this.listeners.forEach((l) => l(this.currentUser));
+  }
+
+  private formatInitials(name: string): string {
+    return (
+      name
+        .split(' ')
+        .map((p) => p[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'MF'
+    );
   }
 }
 

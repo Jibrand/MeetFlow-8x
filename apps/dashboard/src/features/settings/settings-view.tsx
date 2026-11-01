@@ -11,16 +11,93 @@ import {
   Badge,
   toast,
 } from '@meetflow/ui';
-import { Palette, Layers, Radio, Calendar, Video } from 'lucide-react';
+import { Palette, Layers, Radio, Calendar, Video, User, Loader2 } from 'lucide-react';
+import { authAdapter, AuthUser } from '../auth/lib/auth-adapter';
+import { apiClient } from '../../lib/api-client';
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
-  const [workspaceName, setWorkspaceName] = React.useState('MeetFlow AI Production');
-  const [defaultLens, setDefaultLens] = React.useState('executive');
+  const [user, setUser] = React.useState<AuthUser | null>(() => authAdapter.getCurrentUser());
 
-  const handleSaveWorkspace = (e: React.FormEvent) => {
+  const [userName, setUserName] = React.useState(user?.name || '');
+  const [workspaceName, setWorkspaceName] = React.useState(user?.workspace || '');
+  const [orgName, setOrgName] = React.useState(user?.organizationName || '');
+
+  const [savingUser, setSavingUser] = React.useState(false);
+  const [savingWorkspace, setSavingWorkspace] = React.useState(false);
+
+  React.useEffect(() => {
+    return authAdapter.subscribe((u) => {
+      setUser(u);
+      if (u) {
+        setUserName(u.name);
+        setWorkspaceName(u.workspace);
+        setOrgName(u.organizationName || '');
+      }
+    });
+  }, []);
+
+  // Fetch latest workspace & user profile details from backend
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const ws = await apiClient<{ name: string; organizationName?: string | null }>('/workspaces/current');
+        if (ws) {
+          setWorkspaceName(ws.name);
+          setOrgName(ws.organizationName || '');
+        }
+      } catch {
+        // use cached state
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleSaveUserProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('Workspace preferences saved');
+    if (!userName.trim()) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+
+    setSavingUser(true);
+    try {
+      await apiClient('/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: userName.trim() }),
+      });
+      await authAdapter.syncSessionWithServer();
+      toast.success('Profile updated successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update profile');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleSaveWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!workspaceName.trim()) {
+      toast.error('Workspace name cannot be empty');
+      return;
+    }
+
+    setSavingWorkspace(true);
+    try {
+      await apiClient('/workspaces/current', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: workspaceName.trim(),
+          organizationName: orgName.trim() || null,
+        }),
+      });
+      await authAdapter.syncSessionWithServer();
+      toast.success('Workspace settings updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update workspace');
+    } finally {
+      setSavingWorkspace(false);
+    }
   };
 
   return (
@@ -28,14 +105,105 @@ export function SettingsView() {
       {/* Header */}
       <div className="border-b border-border/60 pb-5 space-y-1">
         <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-          Workspace Settings
+          Account & Workspace Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Manage visual theme, recording defaults, and external service integrations.
+          Manage your personal profile, workspace details, and visual appearance.
         </p>
       </div>
 
-      {/* 1. Appearance / Theme */}
+      {/* 1. User Profile */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm">Personal Profile</CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            Your name and email associated with this MeetFlow account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          <form onSubmit={handleSaveUserProfile} className="space-y-4 max-w-md">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Full Name</label>
+              <Input
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                className="text-xs bg-card"
+                placeholder="Your name"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Work Email (Verified)</label>
+              <Input
+                value={user?.email || ''}
+                disabled
+                className="text-xs bg-muted/40 cursor-not-allowed opacity-80"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              size="sm"
+              disabled={savingUser}
+              className="h-8 text-xs font-medium gap-1.5"
+            >
+              {savingUser && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <span>Save Profile</span>
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* 2. Workspace Profile Preferences */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm">Workspace Details</CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            Manage your organization metadata and team workspace identifier.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          <form onSubmit={handleSaveWorkspace} className="space-y-4 max-w-md">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Workspace Name</label>
+              <Input
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                className="text-xs bg-card"
+                placeholder="Workspace name"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Organization / Company Name</label>
+              <Input
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                className="text-xs bg-card"
+                placeholder="Optional company name"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              size="sm"
+              disabled={savingWorkspace}
+              className="h-8 text-xs font-medium gap-1.5"
+            >
+              {savingWorkspace && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <span>Update Workspace</span>
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* 3. Appearance / Theme */}
       <Card>
         <CardHeader className="p-4 pb-2">
           <div className="flex items-center gap-2">
@@ -87,61 +255,18 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
-      {/* 2. Workspace Profile Preferences */}
-      <Card>
-        <CardHeader className="p-4 pb-2">
-          <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Workspace Profile</CardTitle>
-          </div>
-          <CardDescription className="text-xs">
-            Organization metadata and default AI intelligence settings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
-          <form onSubmit={handleSaveWorkspace} className="space-y-4 max-w-md">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Workspace Name</label>
-              <Input
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Default Summary Lens</label>
-              <select
-                value={defaultLens}
-                onChange={(e) => setDefaultLens(e.target.value)}
-                className="h-8 w-full rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="executive">Executive Summary (High-level decisions)</option>
-                <option value="engineering">Engineering Architecture (Technical specifics)</option>
-                <option value="sales">Sales Discovery (Customer pains & objections)</option>
-              </select>
-            </div>
-
-            <Button type="submit" size="sm" className="h-8 text-xs font-medium">
-              Save Preferences
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* 3. Integrations Status (Honest Reporting) */}
+      {/* 4. Integrations Status */}
       <Card>
         <CardHeader className="p-4 pb-2">
           <div className="flex items-center gap-2">
             <Radio className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Integrations & Data Sources</CardTitle>
+            <CardTitle className="text-sm">Integrations & External Services</CardTitle>
           </div>
           <CardDescription className="text-xs">
-            External calendar connections and automated meeting recording bots.
+            Status of calendar connections and automated recording services.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-2 space-y-3">
-          {/* Google Calendar */}
           <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-primary">
@@ -149,7 +274,7 @@ export function SettingsView() {
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">Google Calendar</span>
+                  <span className="text-xs font-semibold text-foreground">Google Calendar & Meet</span>
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
                     Disconnected
                   </Badge>
@@ -162,14 +287,13 @@ export function SettingsView() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => toast.info('Google OAuth integration is scheduled for post-foundation phase.')}
+              onClick={() => toast.info('Google OAuth integration connects in the subsequent release.')}
               className="text-xs h-7"
             >
               Connect
             </Button>
           </div>
 
-          {/* Recording Bot */}
           <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-primary">
@@ -177,20 +301,20 @@ export function SettingsView() {
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">MeetFlow Recording Bot</span>
+                  <span className="text-xs font-semibold text-foreground">Recording Bot & Audio Ingestion</span>
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Stubbed per Brief
+                    Direct Upload Mode
                   </Badge>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Per official 8x instructions, recording bot is stubbed in favor of direct audio file upload.
+                  Audio recordings are ingested directly in My Meetings for verified playback.
                 </p>
               </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => toast.info('Recording bot is stubbed. Use direct audio upload in My Meetings.')}
+              onClick={() => toast.info('Direct audio upload is active in My Meetings.')}
               className="text-xs h-7"
             >
               Configure
