@@ -1,0 +1,24 @@
+{
+  "agent-capture": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node capture.js --hook",
+        "timeout": 30
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node capture.js --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
