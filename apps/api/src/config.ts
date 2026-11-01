@@ -1,8 +1,5 @@
-import dotenv from 'dotenv';
+import './env';
 import { z } from 'zod';
-
-// Load environment variables from .env if present
-dotenv.config();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
