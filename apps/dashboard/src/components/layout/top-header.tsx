@@ -12,7 +12,7 @@ export function TopHeader({ currentPath, onOpenMobileNav }: TopHeaderProps) {
   const { section, detail } = getPageTitle(currentPath);
 
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-background px-3 sm:px-5">
+    <header className="sticky top-0 z-20 flex h-10 shrink-0 items-center justify-between border-b border-border bg-background/95 backdrop-blur-xs px-3 sm:px-5">
       <div className="flex items-center gap-2.5">
         <Button
           variant="ghost"

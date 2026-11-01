@@ -13,6 +13,7 @@ vi.mock('@tanstack/react-router', () => {
   Link.displayName = 'Link';
   return {
     Link,
+    useNavigate: () => vi.fn(),
     useRouterState: (opts?: { select?: (s: any) => any }) => {
       const state = {
         location: {

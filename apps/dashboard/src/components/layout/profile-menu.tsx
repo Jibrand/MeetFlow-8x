@@ -1,4 +1,5 @@
-import { Link } from '@tanstack/react-router';
+import * as React from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Avatar,
   DropdownMenu,
@@ -7,18 +8,14 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  Button,
+  toast,
   cn,
 } from '@meetflow/ui';
-import { ChevronsUpDown, Settings } from 'lucide-react';
+import { ChevronsUpDown, Settings, LogOut } from 'lucide-react';
 import { DEMO_USAGE } from '../../data/demo-usage';
 import { ThemeToggleButton } from './theme-toggle-button';
-
-export const DEMO_USER = {
-  name: 'Jibran',
-  email: 'jibran@meetflow.ai',
-  initials: 'JI',
-  workspace: 'MeetFlow Demo Workspace',
-};
+import { authAdapter, AuthUser } from '../../features/auth/lib/auth-adapter';
 
 export interface ProfileMenuProps {
   collapsed: boolean;
@@ -26,6 +23,30 @@ export interface ProfileMenuProps {
 }
 
 export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
+  const navigate = useNavigate();
+  const [user, setUser] = React.useState<AuthUser | null>(() => authAdapter.getCurrentUser());
+
+  React.useEffect(() => {
+    return authAdapter.subscribe((u) => setUser(u));
+  }, []);
+
+  const displayName = user?.name || 'Jibran';
+  const displayEmail = user?.email || 'jibran@meetflow.ai';
+  const displayInitials = displayName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase() || 'JI';
+  const displayWorkspace = user?.workspace || 'MeetFlow Demo Workspace';
+
+  const handleLogout = () => {
+    authAdapter.logout();
+    toast.success('Signed out of MeetFlow');
+    onNavigate();
+    navigate({ to: '/login' });
+  };
+
   const usagePercent = Math.min(
     100,
     Math.round((DEMO_USAGE.hoursUsed / DEMO_USAGE.totalAllowanceHours) * 100)
@@ -43,12 +64,12 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
               collapsed ? 'justify-center' : 'gap-2'
             )}
           >
-            <Avatar size="sm" fallback={DEMO_USER.initials} alt={DEMO_USER.name} />
+            <Avatar size="sm" fallback={displayInitials} alt={displayName} />
             {!collapsed && (
               <>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-xs font-medium text-foreground">{DEMO_USER.name}</span>
-                  <span className="truncate text-[10px] text-muted-foreground">{DEMO_USER.email}</span>
+                  <span className="truncate text-xs font-medium text-foreground">{displayName}</span>
+                  <span className="truncate text-[10px] text-muted-foreground">{displayEmail}</span>
                 </span>
                 <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </>
@@ -61,13 +82,14 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
           align={collapsed ? 'start' : 'center'}
           sideOffset={8}
           collisionPadding={8}
-          className="w-60"
+          className="w-64"
         >
           <DropdownMenuLabel className="flex items-center gap-2.5 px-2 py-2 font-normal">
-            <Avatar size="default" fallback={DEMO_USER.initials} alt={DEMO_USER.name} />
+            <Avatar size="default" fallback={displayInitials} alt={displayName} />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate text-xs font-semibold text-foreground">{DEMO_USER.name}</span>
-              <span className="truncate text-[11px] text-muted-foreground">{DEMO_USER.email}</span>
+              <span className="truncate text-xs font-semibold text-foreground">{displayName}</span>
+              <span className="truncate text-[11px] text-muted-foreground">{displayEmail}</span>
+              <span className="truncate text-[10px] text-primary font-medium mt-0.5">{displayWorkspace}</span>
             </span>
           </DropdownMenuLabel>
 
@@ -105,11 +127,37 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
             <span>Cycle theme</span>
             <ThemeToggleButton />
           </div>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign out</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       {/* Quick 1-click theme button in sidebar footer */}
-      {!collapsed && <ThemeToggleButton className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" />}
+      {!collapsed && (
+        <div className="flex items-center gap-0.5 shrink-0">
+          <ThemeToggleButton className="h-8 w-8 text-muted-foreground hover:text-foreground" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleLogout}
+            aria-label="Sign out"
+            title="Sign out"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
+

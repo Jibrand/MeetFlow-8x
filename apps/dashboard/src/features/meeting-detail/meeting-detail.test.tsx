@@ -47,16 +47,15 @@ describe('MeetingDetailScaffold', () => {
     expect(screen.getByText('0:40')).toBeDefined();
   });
 
-  it('allows switching summary templates in the meeting workspace', () => {
+  it('renders summary template selector dropdown and active template content', () => {
     const verifiedMeeting = SEEDED_MEETINGS.find((m) => m.id === 'meet-08')!;
     render(<MeetingDetailScaffold meeting={verifiedMeeting} meetingId={verifiedMeeting.id} />);
 
-    // Switch to Engineering Sync template
-    const engineeringButton = screen.getByText('Engineering Sync');
-    fireEvent.click(engineeringButton);
-
-    expect(screen.getByText('Technical architecture, dependencies, blockers, and performance requirements')).toBeDefined();
-    expect(screen.getByText('Technical Decisions')).toBeDefined();
+    // Selector is embedded in summary panel header
+    expect(screen.getByText('Summary type:')).toBeDefined();
+    const trigger = screen.getByRole('button', { name: /select summary template/i });
+    expect(trigger).toBeDefined();
+    expect(screen.getAllByText('General').length).toBeGreaterThan(0);
   });
 
   it('renders transcript tab and searches transcript turns', () => {

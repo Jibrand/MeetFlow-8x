@@ -1,14 +1,22 @@
-import { SummaryTemplateContent } from '../../../types/meeting';
+import { SummaryTemplateContent, SummaryTemplateId } from '../../../types/meeting';
 import { EvidenceLink } from './evidence-link';
 import { Card, CardHeader, CardTitle, CardContent, Button, toast } from '@meetflow/ui';
 import { Sparkles, Copy } from 'lucide-react';
+import { SummaryTemplateSelector } from './summary-template-selector';
 
 export interface SummaryPanelProps {
   template: SummaryTemplateContent;
   onSeek: (seconds: number) => void;
+  currentTemplateId?: SummaryTemplateId;
+  onSelectTemplate?: (templateId: SummaryTemplateId) => void;
 }
 
-export function SummaryPanel({ template, onSeek }: SummaryPanelProps) {
+export function SummaryPanel({
+  template,
+  onSeek,
+  currentTemplateId,
+  onSelectTemplate,
+}: SummaryPanelProps) {
   const handleCopySection = (title: string, items: { text: string }[]) => {
     const text = `${title}\n${items.map((i) => `• ${i.text}`).join('\n')}`;
     navigator.clipboard.writeText(text);
@@ -17,8 +25,8 @@ export function SummaryPanel({ template, onSeek }: SummaryPanelProps) {
 
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-200">
-      {/* Template Header Card */}
-      <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card p-3 shadow-2xs">
+      {/* Template Header Card with Dropdown Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-2xs">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -26,12 +34,21 @@ export function SummaryPanel({ template, onSeek }: SummaryPanelProps) {
           </div>
           <p className="text-xs text-muted-foreground">{template.description}</p>
         </div>
+
+        {currentTemplateId && onSelectTemplate && (
+          <div className="shrink-0">
+            <SummaryTemplateSelector
+              currentTemplate={currentTemplateId}
+              onSelectTemplate={onSelectTemplate}
+            />
+          </div>
+        )}
       </div>
 
       {/* Structured Sections */}
       <div className="space-y-3.5">
         {template.sections.map((section, idx) => (
-          <Card key={idx} className="border border-border/70 bg-card/80 shadow-2xs">
+          <Card key={idx} className="border border-border bg-card/80 shadow-2xs">
             <CardHeader className="p-3.5 pb-2 flex flex-row items-center justify-between border-b border-border/40">
               <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {section.title}

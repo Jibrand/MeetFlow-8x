@@ -1,16 +1,26 @@
 import { SummaryTemplateId } from '../../../types/meeting';
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  Button,
+} from '@meetflow/ui';
+import {
   FileText,
   Briefcase,
   TrendingUp,
   Cpu,
   Layers,
   UserCheck,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 
 export interface SummaryTemplateSelectorProps {
   currentTemplate: SummaryTemplateId;
   onSelectTemplate: (templateId: SummaryTemplateId) => void;
+  className?: string;
 }
 
 const TEMPLATE_OPTIONS: { id: SummaryTemplateId; label: string; icon: typeof FileText }[] = [
@@ -25,31 +35,52 @@ const TEMPLATE_OPTIONS: { id: SummaryTemplateId; label: string; icon: typeof Fil
 export function SummaryTemplateSelector({
   currentTemplate,
   onSelectTemplate,
+  className = '',
 }: SummaryTemplateSelectorProps) {
+  const currentOption =
+    TEMPLATE_OPTIONS.find((t) => t.id === currentTemplate) || TEMPLATE_OPTIONS[0];
+  const CurrentIcon = currentOption.icon;
+
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pr-1 shrink-0">
-        Template:
+    <div className={`flex items-center gap-2 ${className}`}>
+      <span className="text-xs text-muted-foreground font-medium shrink-0">
+        Summary type:
       </span>
-      {TEMPLATE_OPTIONS.map((tmpl) => {
-        const Icon = tmpl.icon;
-        const isActive = currentTemplate === tmpl.id;
-        return (
-          <button
-            key={tmpl.id}
-            type="button"
-            onClick={() => onSelectTemplate(tmpl.id)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap select-none ${
-              isActive
-                ? 'bg-primary text-primary-foreground shadow-2xs font-semibold'
-                : 'bg-secondary/70 text-secondary-foreground hover:bg-secondary hover:text-foreground'
-            }`}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs font-medium border-border hover:bg-secondary/70"
+            aria-label={`Select summary template. Current: ${currentOption.label}`}
           >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
-            <span>{tmpl.label}</span>
-          </button>
-        );
-      })}
+            <CurrentIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span>{currentOption.label}</span>
+            <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5 opacity-70" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48 p-1">
+          {TEMPLATE_OPTIONS.map((tmpl) => {
+            const Icon = tmpl.icon;
+            const isSelected = tmpl.id === currentTemplate;
+            return (
+              <DropdownMenuItem
+                key={tmpl.id}
+                onClick={() => onSelectTemplate(tmpl.id)}
+                className={`flex items-center justify-between text-xs px-2.5 py-1.5 cursor-pointer rounded-md ${
+                  isSelected ? 'bg-primary/10 text-primary font-semibold' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Icon className={`h-3.5 w-3.5 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className="truncate">{tmpl.label}</span>
+                </div>
+                {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0 ml-1.5" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

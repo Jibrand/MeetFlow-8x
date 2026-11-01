@@ -33,7 +33,6 @@ import {
 
 import { MeetingHeader } from './meeting-header';
 import { RecordingPlayer } from './recording-player';
-import { SummaryTemplateSelector } from './summary-template-selector';
 import { SummaryPanel } from './summary-panel';
 import { TranscriptPanel } from './transcript-panel';
 import { AskMeetingPanel } from './ask-meeting-panel';
@@ -210,7 +209,7 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
 
           {/* Primary Content Tabs: Summary | Transcript | Ask AI */}
           <div className="w-full rounded-xl border border-border bg-card shadow-xs overflow-hidden flex flex-col">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border bg-muted/40 px-3.5 py-2.5">
+            <div className="flex items-center justify-between border-b border-border bg-muted/40 px-3.5 py-2.5">
               <div className="inline-flex h-8 items-center justify-center rounded-lg bg-secondary/80 p-1 text-muted-foreground">
                 <button
                   type="button"
@@ -255,13 +254,6 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
                   <span>Ask MeetFlow</span>
                 </button>
               </div>
-
-              {activeTab === 'summary' && (
-                <SummaryTemplateSelector
-                  currentTemplate={selectedTemplateId}
-                  onSelectTemplate={setSelectedTemplateId}
-                />
-              )}
             </div>
 
             <div className="p-4 flex-1">
@@ -269,6 +261,8 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
                 <SummaryPanel
                   template={currentTemplate}
                   onSeek={handleSeekAndSwitchToTranscript}
+                  currentTemplateId={selectedTemplateId}
+                  onSelectTemplate={setSelectedTemplateId}
                 />
               )}
 

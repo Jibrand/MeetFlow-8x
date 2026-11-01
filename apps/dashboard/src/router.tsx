@@ -8,6 +8,10 @@ import { actionsRoute } from './routes/actions';
 import { calendarRoute } from './routes/calendar';
 import { askRoute } from './routes/ask';
 import { settingsRoute } from './routes/settings';
+import { loginRoute } from './routes/login';
+import { registerRoute } from './routes/register';
+import { forgotPasswordRoute } from './routes/forgot-password';
+import { onboardingRoute } from './routes/onboarding';
 
 // /meetings route acts as an alias to the main MeetingsPage library
 const meetingsRoute = createRoute({
@@ -26,6 +30,10 @@ const routeTree = rootRoute.addChildren([
   askRoute,
   settingsRoute,
   designRoute,
+  loginRoute,
+  registerRoute,
+  forgotPasswordRoute,
+  onboardingRoute,
 ]);
 
 export const router = createRouter({
@@ -38,3 +46,4 @@ declare module '@tanstack/react-router' {
     router: typeof router;
   }
 }
+

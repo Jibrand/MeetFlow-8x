@@ -21,6 +21,14 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const mainRef = React.useRef<HTMLElement | null>(null);
+
+  // Global Scroll Reset: Reset main container scroll to top on pathname changes
+  React.useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, [currentPath]);
 
   const handleToggleCollapse = React.useCallback(() => {
     setCollapsed((prev) => {
@@ -35,6 +43,9 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
 
   const closeMobile = React.useCallback(() => setMobileOpen(false), []);
+  const openMobile = React.useCallback(() => setMobileOpen(true), []);
+
+  const isAskPage = currentPath === '/ask';
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
@@ -48,12 +59,19 @@ export function AppShell({ children }: AppShellProps) {
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <TopHeader
-          currentPath={currentPath}
-          onOpenMobileNav={() => setMobileOpen(true)}
-          onOpenSearch={() => setPaletteOpen(true)}
-        />
-        <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Hide global top header on standalone /ask page */}
+        {!isAskPage && (
+          <TopHeader
+            currentPath={currentPath}
+            onOpenMobileNav={openMobile}
+            onOpenSearch={() => setPaletteOpen(true)}
+          />
+        )}
+        <main
+          ref={mainRef}
+          id="main-content"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+        >
           {children}
         </main>
       </div>
