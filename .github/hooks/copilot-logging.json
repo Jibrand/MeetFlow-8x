@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/record-copilot-event.cjs",
+        "timeoutSec": 10
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/record-copilot-event.cjs",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

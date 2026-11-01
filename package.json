@@ -9,7 +9,8 @@
     "build": "pnpm --recursive --filter \"./packages/*\" --filter \"./apps/*\" build",
     "lint": "pnpm --recursive run lint",
     "typecheck": "pnpm --recursive run typecheck",
-    "test": "pnpm --recursive run test"
+    "test": "pnpm --recursive run test",
+    "copilot:import": "node .github/hooks/import-copilot-export.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
