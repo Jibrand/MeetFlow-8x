@@ -1,7 +1,6 @@
 import * as React from 'react';
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -27,6 +26,15 @@ export function AddMeetingDialog() {
   const [fileError, setFileError] = React.useState<string | null>(null);
   const [meetingUrl, setMeetingUrl] = React.useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleOpenChange = React.useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setFile(null);
+      setFileError(null);
+      setMeetingUrl('');
+    }
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -79,23 +87,37 @@ export function AddMeetingDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" className="gap-1.5 h-8 text-xs font-semibold shadow-xs">
-          <Plus className="h-3.5 w-3.5" />
-          <span>Add Meeting</span>
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Meeting Recording</DialogTitle>
-          <DialogDescription>
-            Upload a recorded call or paste a link to generate transcripts and AI intelligence.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Button
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="gap-1.5 h-8 text-xs font-semibold shadow-xs"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        <span>Add Meeting</span>
+      </Button>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent
+          className="sm:max-w-md"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Add Meeting Recording</DialogTitle>
+            <DialogDescription>
+              Upload a recorded call or paste a link to generate transcripts and AI intelligence.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              activationMode="manual"
+              className="w-full"
+            >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="upload" className="gap-1.5">
                 <UploadCloud className="h-3.5 w-3.5" />
@@ -192,5 +214,6 @@ export function AddMeetingDialog() {
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

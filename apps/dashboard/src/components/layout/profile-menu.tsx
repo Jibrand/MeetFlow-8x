@@ -12,7 +12,7 @@ import {
   toast,
   cn,
 } from '@meetflow/ui';
-import { ChevronsUpDown, Settings, LogOut } from 'lucide-react';
+import { ChevronsUpDown, Settings, LogOut, Loader2 } from 'lucide-react';
 import { DEMO_USAGE } from '../../data/demo-usage';
 import { ThemeToggleButton } from './theme-toggle-button';
 import { authAdapter, AuthUser } from '../../features/auth/lib/auth-adapter';
@@ -41,11 +41,22 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
       .toUpperCase() || 'MF';
   const displayWorkspace = user?.workspace || 'My Workspace';
 
-  const handleLogout = async () => {
-    onNavigate();
-    await authAdapter.logout();
-    toast.success('Signed out of MeetFlow');
-    navigate({ to: '/login' });
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+
+  const handleLogout = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    try {
+      await authAdapter.logout();
+      toast.success('Signed out successfully');
+      onNavigate();
+      navigate({ to: '/login' });
+    } catch (err: any) {
+      setIsLoggingOut(false);
+      toast.error(err?.message || 'Failed to sign out. Please try again.');
+    }
   };
 
   const usagePercent = Math.min(
@@ -133,10 +144,15 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
 
           <DropdownMenuItem
             onClick={handleLogout}
-            className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10"
+            disabled={isLoggingOut}
+            className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer disabled:pointer-events-none disabled:opacity-50"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Sign out</span>
+            {isLoggingOut ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-destructive" />
+            ) : (
+              <LogOut className="h-3.5 w-3.5" />
+            )}
+            <span>{isLoggingOut ? 'Signing out...' : 'Sign out'}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -148,11 +164,16 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
           variant="ghost"
           size="icon-sm"
           onClick={handleLogout}
-          aria-label="Sign out"
-          title="Sign out"
+          disabled={isLoggingOut}
+          aria-label={isLoggingOut ? 'Signing out...' : 'Sign out'}
+          title={isLoggingOut ? 'Signing out...' : 'Sign out'}
           className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
         >
-          <LogOut className="h-3.5 w-3.5" />
+          {isLoggingOut ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-destructive" />
+          ) : (
+            <LogOut className="h-3.5 w-3.5" />
+          )}
         </Button>
       )}
     </div>

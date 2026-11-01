@@ -34,7 +34,7 @@ export function LoginForm() {
 
     if (result.success) {
       toast.success('Signed in successfully');
-      navigate({ to: '/' });
+      navigate({ to: result.user?.onboardingCompleted === false ? '/onboarding' : '/' });
     } else {
       toast.error(result.error || 'Invalid email or password');
     }

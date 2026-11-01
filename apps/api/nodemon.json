@@ -1,0 +1,8 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": ["src/**/*.test.ts", "dist", "node_modules", "prisma/migrations"],
+  "exec": "tsx src/server.ts",
+  "delay": 200,
+  "signal": "SIGTERM"
+}

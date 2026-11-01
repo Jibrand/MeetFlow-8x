@@ -9,6 +9,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['react-hot-toast'],
+  },
   server: {
     port: 5173,
     proxy: {

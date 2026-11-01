@@ -29,6 +29,7 @@ class AuthAdapter {
   private apiAvailable = true;
   private apiError: string | null = null;
   private syncPromise: Promise<AuthUser | null> | null = null;
+  private epoch = 0;
 
   constructor() {
     // Never trust client storage before backend verification; start strictly unauthenticated
@@ -68,6 +69,8 @@ class AuthAdapter {
       return this.syncPromise;
     }
 
+    const currentEpoch = ++this.epoch;
+
     this.syncPromise = (async () => {
       try {
         const data = await apiClient<{
@@ -76,8 +79,15 @@ class AuthAdapter {
           onboarding: { completed: boolean; currentStep: number; professionalRole?: string; primaryUseCases?: string[] };
         }>('/auth/me');
 
+        if (currentEpoch !== this.epoch) {
+          return this.currentUser;
+        }
+
         this.apiAvailable = true;
         this.apiError = null;
+        this.initialized = true;
+        setSessionHint(true);
+        resetSessionInvalidState();
 
         const user: AuthUser = {
           id: data.user.id,
@@ -93,18 +103,20 @@ class AuthAdapter {
         };
 
         this.setUser(user);
-        setSessionHint(true);
-        resetSessionInvalidState();
-        this.initialized = true;
         return user;
       } catch (err: any) {
+        if (currentEpoch !== this.epoch) {
+          return this.currentUser;
+        }
+
         this.initialized = true;
 
         if (
           err instanceof ApiError &&
-          (err.status === 0 || err.code === 'API_UNAVAILABLE' || err.code === 'NETWORK_ERROR')
+          (err.status === 0 || err.code === 'API_UNAVAILABLE' || err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')
         ) {
           // Backend offline / connection refused
+          this.currentUser = null;
           this.apiAvailable = false;
           this.apiError = 'Cannot connect to MeetFlow API server at http://localhost:4000. Backend is offline.';
           this.notify();
@@ -136,6 +148,7 @@ class AuthAdapter {
     password?: string
   ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
     try {
+      ++this.epoch;
       resetSessionInvalidState();
       const data = await apiClient<{
         user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
@@ -148,6 +161,7 @@ class AuthAdapter {
 
       this.apiAvailable = true;
       this.apiError = null;
+      this.initialized = true;
       setSessionHint(true);
       resetSessionInvalidState();
 
@@ -189,6 +203,7 @@ class AuthAdapter {
     workspaceName?: string
   ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
     try {
+      ++this.epoch;
       resetSessionInvalidState();
       const data = await apiClient<{
         user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
@@ -201,6 +216,7 @@ class AuthAdapter {
 
       this.apiAvailable = true;
       this.apiError = null;
+      this.initialized = true;
       setSessionHint(true);
       resetSessionInvalidState();
 
@@ -238,8 +254,13 @@ class AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    // 1. Immediately clear authenticated frontend state so no protected views remain accessible
+    ++this.epoch;
+    // 1. Call backend to revoke database session and clear HTTP-only cookies
+    await apiClient('/auth/logout', { method: 'POST' });
+
+    // 2. Clear authenticated state upon successful revocation
     this.currentUser = null;
+    this.initialized = true;
     markSessionInvalid();
     try {
       sessionStorage.removeItem(AUTH_STORAGE_KEY);
@@ -247,13 +268,14 @@ class AuthAdapter {
       // ignore
     }
     this.notify();
+  }
 
-    // 2. Call backend to revoke database session and clear HTTP-only cookies
-    try {
-      await apiClient('/auth/logout', { method: 'POST' });
-    } catch {
-      // ignore network errors on logout
-    }
+  forceUnauthenticated(): void {
+    ++this.epoch;
+    this.currentUser = null;
+    this.initialized = true;
+    markSessionInvalid();
+    this.notify();
   }
 
   private setUser(user: AuthUser): void {
@@ -263,6 +285,7 @@ class AuthAdapter {
       // ignore
     }
     this.currentUser = user;
+    this.initialized = true;
     this.notify();
   }
 

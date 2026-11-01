@@ -27,14 +27,29 @@ describe('AuthAdapter with Real API Integration', () => {
     vi.clearAllMocks();
   });
 
-  it('allows logging out and clears user state immediately', async () => {
+  it('allows logging out and clears user state upon API success', async () => {
     vi.mocked(apiModule.apiClient).mockResolvedValue({ message: 'Logged out' });
-    const logoutPromise = authAdapter.logout();
-    // Synchronously cleared state
+    await authAdapter.logout();
     expect(authAdapter.getCurrentUser()).toBeNull();
     expect(authAdapter.isAuthenticated()).toBe(false);
-    await logoutPromise;
-    expect(authAdapter.getCurrentUser()).toBeNull();
+  });
+
+  it('preserves user state and propagates error if logout API call fails', async () => {
+    vi.mocked(apiModule.apiClient).mockResolvedValueOnce({
+      user: { id: 'u-logout-test', name: 'Test User', email: 'logout@test.com', avatarUrl: null, role: 'MEMBER' },
+      workspace: { id: 'ws-1', name: 'Test Workspace', slug: 'test', role: 'OWNER' },
+      onboarding: { completed: true, currentStep: 5 },
+    });
+    await authAdapter.login('logout@test.com', 'password123');
+    expect(authAdapter.isAuthenticated()).toBe(true);
+
+    vi.mocked(apiModule.apiClient).mockRejectedValueOnce(
+      new apiModule.ApiError(500, { code: 'SERVER_ERROR', message: 'Logout service unavailable' })
+    );
+
+    await expect(authAdapter.logout()).rejects.toThrow('Logout service unavailable');
+    // Session state preserved on error
+    expect(authAdapter.getCurrentUser()?.email).toBe('logout@test.com');
   });
 
   it('strictly requires server verification and does not trust arbitrary client storage', async () => {
@@ -139,6 +154,78 @@ describe('AuthAdapter with Real API Integration', () => {
     expect(user).toBeNull();
     expect(authAdapter.isApiAvailable()).toBe(false);
     expect(authAdapter.getApiError()).toBeTruthy();
+    expect(authAdapter.isInitialized()).toBe(true);
+  });
+
+  it('guarantees isInitialized becomes true after login so route guards do not spin infinitely', async () => {
+    vi.mocked(apiModule.apiClient).mockResolvedValue({
+      user: {
+        id: 'u-3',
+        name: 'Jordan Belfort',
+        email: 'jordan@wallstreet.com',
+        avatarUrl: null,
+        role: 'OWNER',
+      },
+      workspace: {
+        id: 'ws-3',
+        name: "Stratton Oakmont",
+        slug: 'stratton-oakmont',
+        role: 'OWNER',
+      },
+      onboarding: {
+        completed: true,
+        currentStep: 5,
+      },
+    });
+
+    const result = await authAdapter.login('jordan@wallstreet.com', 'password123');
+    expect(result.success).toBe(true);
+    expect(authAdapter.isInitialized()).toBe(true);
+    expect(authAdapter.isAuthenticated()).toBe(true);
+  });
+
+  it('protects against race condition: stale 401 sync does not wipe out active login session', async () => {
+    let rejectSync: (reason: any) => void = () => {};
+    const deferredSync = new Promise((_, reject) => {
+      rejectSync = reject;
+    });
+
+    // 1. Initial syncSessionWithServer starts
+    vi.mocked(apiModule.apiClient).mockReturnValueOnce(deferredSync as any);
+    const syncPromise = authAdapter.syncSessionWithServer();
+
+    // 2. User successfully logs in before the slow sync finishes
+    vi.mocked(apiModule.apiClient).mockResolvedValueOnce({
+      user: {
+        id: 'u-4',
+        name: 'Elena Rostova',
+        email: 'elena@example.com',
+        avatarUrl: null,
+        role: 'MEMBER',
+      },
+      workspace: {
+        id: 'ws-4',
+        name: "Elena's Workspace",
+        slug: 'elenas-workspace',
+        role: 'OWNER',
+      },
+      onboarding: {
+        completed: true,
+        currentStep: 5,
+      },
+    });
+    const loginResult = await authAdapter.login('elena@example.com', 'secret123');
+    expect(loginResult.success).toBe(true);
+    expect(authAdapter.getCurrentUser()?.email).toBe('elena@example.com');
+
+    // 3. Now the old sync resolves with 401
+    rejectSync(new apiModule.ApiError(401, { code: 'UNAUTHORIZED', message: 'Token required' }));
+    await syncPromise;
+
+    // 4. Active user session MUST be preserved despite the stale 401
+    expect(authAdapter.getCurrentUser()?.email).toBe('elena@example.com');
+    expect(authAdapter.isAuthenticated()).toBe(true);
+    expect(authAdapter.isInitialized()).toBe(true);
   });
 });
 

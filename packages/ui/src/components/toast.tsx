@@ -1,26 +1,72 @@
-import { Toaster as Sonner, toast } from 'sonner';
+import * as React from 'react';
+import hotToast, {
+  Toaster as HotToaster,
+  type ToasterProps as HotToasterProps,
+} from 'react-hot-toast';
 
-export type ToasterProps = React.ComponentProps<typeof Sonner>;
+export type ToasterProps = HotToasterProps & {
+  theme?: 'light' | 'dark';
+};
 
-export const Toaster = ({ position = 'top-center', ...props }: ToasterProps) => {
+export const Toaster: React.FC<ToasterProps> = ({
+  position = 'top-center',
+  theme = 'light',
+  toastOptions,
+  ...props
+}) => {
+  const isDark = theme === 'dark';
+
   return (
-    <Sonner
+    <HotToaster
       position={position}
-      className="toaster group"
+      containerStyle={{
+        top: 24,
+      }}
       toastOptions={{
-        classNames: {
-          toast:
-            'group toast group-[.toaster]:bg-card group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg text-xs font-medium rounded-lg',
-          description: 'group-[.toast]:text-muted-foreground text-[11px]',
-          actionButton:
-            'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground text-xs font-medium',
-          cancelButton:
-            'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground text-xs font-medium',
+        duration: 3500,
+        style: {
+          background: isDark ? '#18181b' : '#ffffff',
+          color: isDark ? '#f4f4f5' : '#18181b',
+          border: `1px solid ${isDark ? '#27272a' : '#e4e4e7'}`,
+          borderRadius: '0.5rem',
+          padding: '10px 16px',
+          fontSize: '12px',
+          fontWeight: 500,
+          boxShadow: isDark
+            ? '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4)'
+            : '0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)',
+          maxWidth: '420px',
         },
+        success: {
+          iconTheme: {
+            primary: '#D97706', // Honey #D97706
+            secondary: isDark ? '#18181b' : '#ffffff',
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: '#EF4444',
+            secondary: isDark ? '#18181b' : '#ffffff',
+          },
+        },
+        ...toastOptions,
       }}
       {...props}
     />
   );
 };
 
-export { toast };
+// Polyfill toast.info on top of react-hot-toast for backwards compatibility
+export const toast = Object.assign(
+  (message: any, opts?: any) => hotToast(message, opts),
+  hotToast,
+  {
+    info: (message: any, opts?: any) =>
+      hotToast(message, {
+        icon: 'ℹ️',
+        ...opts,
+      }),
+  }
+);
+
+export default toast;

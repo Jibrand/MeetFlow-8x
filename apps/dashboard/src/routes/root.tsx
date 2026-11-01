@@ -11,10 +11,31 @@ export const rootRoute = createRootRoute({
   component: RootComponent,
 });
 
-function AuthLoadingScreen() {
+function AuthLoadingScreen({
+  onRetry,
+  isRetrying,
+}: {
+  onRetry?: () => void;
+  isRetrying?: boolean;
+} = {}) {
+  const navigate = useNavigate();
+  const [timedOut, setTimedOut] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleReturnToSignIn = () => {
+    authAdapter.forceUnauthenticated();
+    navigate({ to: '/login' });
+  };
+
   return (
     <div className="min-h-dvh w-full flex flex-col items-center justify-center bg-background text-foreground px-4">
-      <div className="flex flex-col items-center gap-4 text-center max-w-xs animate-in fade-in duration-200">
+      <div className="flex flex-col items-center gap-4 text-center max-w-sm rounded-xl border border-border/50 bg-card/80 p-6 shadow-xs animate-in fade-in duration-200">
         <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
           <AudioLines className="h-6 w-6 animate-pulse" />
         </div>
@@ -22,9 +43,39 @@ function AuthLoadingScreen() {
           <h2 className="text-sm font-semibold tracking-tight text-foreground">MeetFlow AI</h2>
           <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin text-primary" />
-            <span>Verifying session...</span>
+            <span>{isRetrying ? 'Re-verifying session...' : 'Verifying session...'}</span>
           </p>
         </div>
+
+        {timedOut && (
+          <div className="w-full pt-2 flex flex-col items-center gap-3 border-t border-border/50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <p className="text-xs text-muted-foreground text-center">
+              Session verification is taking longer than expected.
+            </p>
+            <div className="flex items-center gap-2 w-full">
+              {onRetry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onRetry}
+                  disabled={isRetrying}
+                  className="flex-1 h-8 text-xs font-medium gap-1.5"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
+                  <span>Retry</span>
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReturnToSignIn}
+                className="flex-1 h-8 text-xs font-medium"
+              >
+                Sign In
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -171,7 +222,7 @@ function RootComponent() {
   if (isAuthPage) {
     if (isInitialized && isAuthenticated) {
       // Authenticated user on auth page: show loader while redirect effect navigates to dashboard
-      return <AuthLoadingScreen />;
+      return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
     }
     return (
       <div className="min-h-dvh flex flex-col">
@@ -185,7 +236,7 @@ function RootComponent() {
 
   // 2. Protected Routes: While session bootstrap is in flight, display clean loading screen
   if (!isInitialized) {
-    return <AuthLoadingScreen />;
+    return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
   }
 
   // 3. Protected Routes: If backend is completely unreachable, display retryable error screen (never grant dashboard access)
@@ -200,7 +251,7 @@ function RootComponent() {
 
   // 4. Protected Routes: If unauthenticated, show loader while redirect effect navigates to /login
   if (!isAuthenticated) {
-    return <AuthLoadingScreen />;
+    return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
   }
 
   // 5. Onboarding view for authenticated users
