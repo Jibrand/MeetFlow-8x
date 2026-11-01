@@ -24,16 +24,59 @@ enum WorkspaceRole {
 
 enum MeetingStatus {
   SCHEDULED
+  COMPLETED
+  CANCELLED
   PROCESSING
   READY
   FAILED
 }
 
+enum ProcessingStatus {
+  NOT_STARTED
+  QUEUED
+  PARSING
+  ANALYZING
+  FINALIZING
+  READY
+  FAILED
+}
+
+enum SourceType {
+  MANUAL
+  TRANSCRIPT_UPLOAD
+  AUDIO_UPLOAD
+  VIDEO_UPLOAD
+  CALENDAR
+}
+
 enum ActionItemStatus {
-  OPEN
+  TODO
   IN_PROGRESS
+  DONE
+  OPEN
   COMPLETED
   DISMISSED
+}
+
+enum ActionItemSource {
+  MANUAL
+  AI_EXTRACTED
+}
+
+enum ProcessingJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingStage {
+  QUEUED
+  PARSING
+  ANALYZING
+  FINALIZING
+  COMPLETED
+  FAILED
 }
 
 model User {
@@ -47,7 +90,8 @@ model User {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  meetings            Meeting[]
+  meetings            Meeting[]             @relation("MeetingCreatedBy")
+  assignedActionItems ActionItem[]          @relation("ActionItemAssignee")
   workspaceMembers    WorkspaceMember[]
   onboarding          UserOnboarding?
   sessions            AuthSession[]
@@ -65,6 +109,8 @@ model Workspace {
   updatedAt        DateTime          @updatedAt
 
   members          WorkspaceMember[]
+  meetings         Meeting[]
+  actionItems      ActionItem[]
 
   @@map("workspaces")
 }
@@ -127,76 +173,152 @@ model PasswordResetToken {
 
 model Meeting {
   id               String               @id @default(uuid())
+  workspaceId      String
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById      String?
+  createdBy        User?                @relation("MeetingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   title            String
-  description      String?
-  date             DateTime             @default(now())
+  description      String?              @db.Text
+  startAt          DateTime             @default(now())
+  endAt            DateTime?
+  timezone         String               @default("UTC")
+  meetingStatus    MeetingStatus        @default(SCHEDULED)
+  processingStatus ProcessingStatus     @default(NOT_STARTED)
+  sourceType       SourceType           @default(MANUAL)
   durationSeconds  Int                  @default(0)
-  status           MeetingStatus        @default(READY)
   recordingUrl     String?
   thumbnailUrl     String?
-  executiveSummary String?              @db.Text
-  keyTakeaways     String[]             @default([])
-  attendeeCount    Int                  @default(1)
-  userId           String?
-  user             User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
-  transcript       TranscriptSegment[]
+  participants     MeetingParticipant[]
+  transcripts      MeetingTranscript[]
+  segments         TranscriptSegment[]
+  summary          MeetingSummary?
   actionItems      ActionItem[]
+  processingJobs   MeetingProcessingJob[]
   highlights       Highlight[]
   shareLinks       ShareLink[]
 
-  @@index([date])
-  @@index([status])
+  @@index([workspaceId])
+  @@index([startAt])
+  @@index([meetingStatus])
+  @@index([processingStatus])
   @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String   @id @default(uuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  role      String?
+  createdAt DateTime @default(now())
+
+  @@index([meetingId])
+  @@map("meeting_participants")
+}
+
+model MeetingTranscript {
+  id             String   @id @default(uuid())
+  meetingId      String
+  meeting        Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  rawText        String   @db.Text
+  sourceFilename String
+  sourceFormat   String
+  parserVersion  String   @default("1.0.0")
+  createdAt      DateTime @default(now())
+
+  @@index([meetingId])
+  @@map("meeting_transcripts")
 }
 
 model TranscriptSegment {
   id          String   @id @default(uuid())
   meetingId   String
   meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  speakerId   String
-  speakerName String
-  startTime   Float
-  endTime     Float
+  sequence    Int
+  speakerName String?
+  startMs     Int?
+  endMs       Int?
   text        String   @db.Text
   createdAt   DateTime @default(now())
 
-  @@index([meetingId, startTime])
+  @@index([meetingId, sequence])
   @@map("transcript_segments")
 }
 
-model ActionItem {
-  id               String           @id @default(uuid())
-  meetingId        String
-  meeting          Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  title            String
-  description      String?          @db.Text
-  assigneeName     String?
-  assigneeEmail    String?
-  dueDate          DateTime?
-  status           ActionItemStatus @default(OPEN)
-  timestampSeconds Float?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+model MeetingSummary {
+  id          String   @id @default(uuid())
+  meetingId   String   @unique
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  overview    String   @db.Text
+  keyPoints   Json     @default("[]")
+  decisions   Json     @default("[]")
+  topics      Json     @default("[]")
+  highlights  Json     @default("[]")
+  model       String
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  @@index([meetingId, status])
+  @@map("meeting_summaries")
+}
+
+model ActionItem {
+  id             String           @id @default(uuid())
+  workspaceId    String
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  meetingId      String?
+  meeting        Meeting?         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?          @db.Text
+  assigneeName   String?
+  assigneeUserId String?
+  assigneeUser   User?            @relation("ActionItemAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  dueDate        DateTime?
+  status         ActionItemStatus @default(TODO)
+  source         ActionItemSource @default(MANUAL)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([meetingId])
   @@map("action_items")
+}
+
+model MeetingProcessingJob {
+  id          String               @id @default(uuid())
+  meetingId   String
+  meeting     Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  jobId       String               @unique
+  status      ProcessingJobStatus  @default(QUEUED)
+  stage       ProcessingStage      @default(QUEUED)
+  progress    Int                  @default(0)
+  attempts    Int                  @default(0)
+  errorCode   String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([meetingId])
+  @@index([status])
+  @@map("meeting_processing_jobs")
 }
 
 model Highlight {
   id        String   @id @default(uuid())
   meetingId String
   meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  startTime Float
-  endTime   Float
+  startTime Float?
+  endTime   Float?
   quote     String   @db.Text
   note      String?  @db.Text
   tags      String[] @default([])
   createdAt DateTime @default(now())
 
-  @@index([meetingId, startTime])
+  @@index([meetingId])
   @@map("highlights")
 }
 
