@@ -1,0 +1,19 @@
+{
+  "name": "meetflow-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"@meetflow/*\" dev",
+    "dev:api": "pnpm --filter \"@meetflow/api\" dev",
+    "dev:dashboard": "pnpm --filter \"@meetflow/dashboard\" dev",
+    "build": "pnpm --recursive --filter \"./packages/*\" --filter \"./apps/*\" build",
+    "lint": "pnpm --recursive run lint",
+    "typecheck": "pnpm --recursive run typecheck",
+    "test": "pnpm --recursive run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}

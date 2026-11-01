@@ -1,0 +1,134 @@
+// Prisma schema for MeetFlow AI (Neon PostgreSQL)
+// Datasource and generator configuration
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ActionItemStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String
+  avatarUrl String?
+  role      UserRole  @default(MEMBER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  meetings  Meeting[]
+
+  @@map("users")
+}
+
+model Meeting {
+  id               String               @id @default(uuid())
+  title            String
+  description      String?
+  date             DateTime             @default(now())
+  durationSeconds  Int                  @default(0)
+  status           MeetingStatus        @default(READY)
+  recordingUrl     String?
+  thumbnailUrl     String?
+  executiveSummary String?              @db.Text
+  keyTakeaways     String[]             @default([])
+  attendeeCount    Int                  @default(1)
+  userId           String?
+  user             User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  transcript       TranscriptSegment[]
+  actionItems      ActionItem[]
+  highlights       Highlight[]
+  shareLinks       ShareLink[]
+
+  @@index([date])
+  @@index([status])
+  @@map("meetings")
+}
+
+model TranscriptSegment {
+  id          String   @id @default(uuid())
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  speakerId   String
+  speakerName String
+  startTime   Float
+  endTime     Float
+  text        String   @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([meetingId, startTime])
+  @@map("transcript_segments")
+}
+
+model ActionItem {
+  id               String           @id @default(uuid())
+  meetingId        String
+  meeting          Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?          @db.Text
+  assigneeName     String?
+  assigneeEmail    String?
+  dueDate          DateTime?
+  status           ActionItemStatus @default(OPEN)
+  timestampSeconds Float?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([meetingId, status])
+  @@map("action_items")
+}
+
+model Highlight {
+  id        String   @id @default(uuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  startTime Float
+  endTime   Float
+  quote     String   @db.Text
+  note      String?  @db.Text
+  tags      String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([meetingId, startTime])
+  @@map("highlights")
+}
+
+model ShareLink {
+  id         String    @id @default(uuid())
+  meetingId  String
+  meeting    Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  isPublic   Boolean   @default(true)
+  allowClips Boolean   @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([token])
+  @@map("share_links")
+}

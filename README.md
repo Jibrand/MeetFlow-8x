@@ -1,0 +1,98 @@
+# MeetFlow AI — Meeting Intelligence Platform (8x Assignment)
+
+MeetFlow AI is a high-density, AI-native meeting intelligence SaaS inspired by Fathom. It captures meeting recordings, synchronizes transcripts, generates executive summaries, highlights critical moments, and tracks action items.
+
+---
+
+## Workspace Architecture
+
+This repository is organized as a lightweight `pnpm` monorepo:
+
+```text
+/
+├── .agents/                 # 8x automatic prompt & response capture system
+├── .agent-logs/             # Authoritative session transcripts (Git tracked)
+├── apps/
+│   ├── dashboard/           # Primary product: Vite + React + TypeScript + TanStack Router
+│   └── api/                 # Express + TypeScript backend with Neon PostgreSQL Prisma schema
+├── packages/
+│   ├── ui/                  # Design tokens, Tailwind preset, and Radix UI primitives
+│   └── contracts/           # Shared Zod schemas, data contracts, and response envelopes
+├── docs/
+│   ├── architecture/        # System design and data flow documentation
+│   ├── decisions/           # Architecture Decision Records (ADRs)
+│   ├── product/             # Scope boundaries, roadmap, and deferred features
+│   ├── security/            # Security checklist and compliance policies
+│   └── testing/             # Test pyramids and quality assurance strategy
+├── AGENTS.md                # Agent workspace instructions & capture rules
+├── GEMINI.md                # Gemini-specific directives & capture policies
+├── CAPTURE-TEST.md          # Official 8x agent capture verification proof
+├── .env.example             # Environment variable template
+└── pnpm-workspace.yaml      # Monorepo configuration
+```
+
+---
+
+## Quickstart
+
+### Prerequisites
+- Node.js >= 20 (v24 recommended)
+- pnpm >= 9 (v12 recommended)
+
+### 1. Install Dependencies
+```bash
+pnpm install
+```
+
+### 2. Environment Configuration
+Copy the template to `.env`:
+```bash
+cp .env.example .env
+```
+
+### 3. Start Development Servers
+Run both dashboard and backend concurrently:
+```bash
+pnpm dev
+```
+
+Or run services individually:
+```bash
+# Dashboard (runs on http://localhost:5173)
+pnpm dev:dashboard
+
+# Backend API (runs on http://localhost:4000)
+pnpm dev:api
+```
+
+---
+
+## Common Scripts
+
+| Command | Description |
+|---|---|
+| `pnpm dev` | Run all applications in development mode |
+| `pnpm build` | Build contracts, UI package, API, and dashboard |
+| `pnpm typecheck` | Run TypeScript strict checks across the monorepo |
+| `pnpm test` | Run Vitest unit & integration test suites |
+| `pnpm lint` | Run code quality and type check linter |
+
+---
+
+## Key URLs
+
+- **Dashboard UI**: [http://localhost:5173](http://localhost:5173)
+- **Design System Showcase**: [http://localhost:5173/design](http://localhost:5173/design)
+- **API Health Check**: [http://localhost:4000/api/health](http://localhost:4000/api/health)
+- **API Base**: [http://localhost:4000/api/v1](http://localhost:4000/api/v1)
+
+---
+
+## 8x Agent Capture System
+
+As required by the 8x assignment brief, all agent interactions are automatically logged in `.agent-logs/` matching `YYYY-MM-DD_HH-MM-SS_<session-id>.md`.
+The capture system is driven by:
+1. Lifecycle hooks configured in `.agents/hooks.json`.
+2. Daemonized background watcher `.agents/watcher.js` polling IDE transcripts.
+3. Strict instructions in `AGENTS.md` and `GEMINI.md`.
+Verification details are documented in `CAPTURE-TEST.md`.
