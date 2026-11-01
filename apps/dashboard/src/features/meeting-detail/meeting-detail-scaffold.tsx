@@ -4,27 +4,16 @@ import {
   MeetingStatusBadge,
   SpeakerAvatar,
   MeetingMetadata,
-  Button,
   Badge,
   Card,
   CardHeader,
   CardTitle,
-  CardContent,
   EmptyState,
   ErrorState,
-  ActionItemRow,
   toast,
 } from '@meetflow/ui';
-import {
-  ArrowLeft,
-  Share2,
-  Calendar,
-  Sparkles,
-  PlayCircle,
-  FileText,
-  Clock,
-  AlertTriangle,
-} from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, AlertTriangle } from 'lucide-react';
+import { MeetingDetailView } from './components/meeting-detail-view';
 
 export interface MeetingDetailScaffoldProps {
   meeting?: MeetingItem;
@@ -47,6 +36,11 @@ export function MeetingDetailScaffold({ meeting, meetingId }: MeetingDetailScaff
     );
   }
 
+  // 2. Ready Meeting -> Full Meeting Intelligence Workspace
+  if (meeting.status === 'ready') {
+    return <MeetingDetailView meeting={meeting} />;
+  }
+
   const platformLabel = {
     zoom: 'Zoom Call',
     meet: 'Google Meet',
@@ -54,30 +48,19 @@ export function MeetingDetailScaffold({ meeting, meetingId }: MeetingDetailScaff
     upload: 'Uploaded Audio',
   }[meeting.platform];
 
+  // 3. Non-Ready States (scheduled, processing, failed)
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Navigation & Header */}
       <div className="space-y-4 border-b border-border/60 pb-5">
         <div className="flex items-center justify-between">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Back to Meetings</span>
           </Link>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                navigator.clipboard?.writeText(window.location.href);
-                toast.success('Share link copied to clipboard!');
-              }}
-              className="gap-1.5 h-8 text-xs"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              <span>Share</span>
-            </Button>
-          </div>
         </div>
 
         {/* Title, Badges, Metadata */}
@@ -124,8 +107,6 @@ export function MeetingDetailScaffold({ meeting, meetingId }: MeetingDetailScaff
           </div>
         </div>
       </div>
-
-      {/* 2. State-Specific Content Panels */}
 
       {/* Case A: Failed Meeting */}
       {meeting.status === 'failed' && (
@@ -175,84 +156,6 @@ export function MeetingDetailScaffold({ meeting, meetingId }: MeetingDetailScaff
             </div>
           </CardHeader>
         </Card>
-      )}
-
-      {/* Case D: Ready Meeting (Workspace Scaffold Preview) */}
-      {meeting.status === 'ready' && (
-        <div className="space-y-6">
-          {/* Phase 04 Reserved Workspace Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-xs">
-                <PlayCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-foreground">
-                  Meeting Intelligence Workspace Scaffold (Phase 03)
-                </h4>
-                <p className="text-[11px] text-muted-foreground">
-                  The complete interactive media player, synchronized transcript scrubber, and summary template switcher are arriving in Phase 04.
-                </p>
-              </div>
-            </div>
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => toast.info('Media playback engine initialized for Phase 04')}
-              className="h-8 gap-1.5 text-xs shrink-0"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <span>Preview Player Stub</span>
-            </Button>
-          </div>
-
-          {/* Seeded Summary Preview Card */}
-          {meeting.summary && (
-            <Card>
-              <CardHeader className="p-4 pb-2">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-xs font-semibold">Executive Summary</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="p-4 pt-1 space-y-3 text-xs leading-relaxed text-muted-foreground">
-                <p className="text-foreground/90 font-medium">{meeting.summary.executiveSummary}</p>
-                {meeting.summary.keyTakeaways.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <span className="text-label text-muted-foreground">Key Takeaways</span>
-                    <ul className="list-disc pl-4 space-y-1 text-foreground/80">
-                      {meeting.summary.keyTakeaways.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Seeded Action Items */}
-          {meeting.actionItems && meeting.actionItems.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-label text-muted-foreground">Action Items</span>
-              <div className="space-y-2">
-                {meeting.actionItems.map((action) => (
-                  <ActionItemRow
-                    key={action.id}
-                    title={action.title}
-                    completed={action.completed}
-                    assigneeName={action.assigneeName}
-                    dueDate={action.dueDate}
-                    priority={action.priority}
-                    timestampSeconds={action.timestampSeconds}
-                    onSeek={(s) => toast.info(`Scrubbing to ${s}s`)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

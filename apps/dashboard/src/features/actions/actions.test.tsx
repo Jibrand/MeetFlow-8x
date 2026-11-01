@@ -24,7 +24,7 @@ describe('ActionItemsView Feature', () => {
 
     expect(screen.getByText('Add composite database index on [meetingId, startTime]')).toBeDefined();
     // SpeakerAvatar renders the assignee name in title attribute
-    expect(screen.getByTitle('Alex Vance')).toBeDefined();
+    expect(screen.getAllByTitle('Alex Vance').length).toBeGreaterThan(0);
   });
 
   it('filters action items by open and completed filters', () => {
@@ -48,7 +48,7 @@ describe('ActionItemsView Feature', () => {
     // Toggle the first action item
     fireEvent.click(firstCheckbox);
 
-    const stored = localStorage.getItem('meetflow-action-items-state');
+    const stored = localStorage.getItem('meetflow-action-items-overrides-v2');
     expect(stored).not.toBeNull();
   });
 });

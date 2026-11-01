@@ -1,4 +1,9 @@
-import { MeetingItem, ActionItemData } from '../types/meeting';
+import {
+  MeetingItem,
+  ActionItemData,
+  SummaryTemplateId,
+  SummaryTemplateContent,
+} from '../types/meeting';
 
 export const SEEDED_MEETINGS: MeetingItem[] = [
   {
@@ -323,27 +328,253 @@ export const SEEDED_MEETINGS: MeetingItem[] = [
   },
   {
     id: 'meet-08',
-    title: 'Quick 2-Minute Ingestion Test Call',
+    title: 'Verified Recording Sync & Playback Test Call',
     startDate: '2026-10-29T09:00:00Z',
-    durationSeconds: 120, // 2m
+    durationSeconds: 40,
     status: 'ready',
     platform: 'upload',
-    organizer: { id: 'u1', name: 'Jibran', email: 'jibran@meetflow.ai' },
+    isVerifiedAudio: true,
+    recordingUrl: '/recordings/verified-demo.wav',
+    organizer: { id: 'u1', name: 'Jibran', email: 'jibran@meetflow.ai', role: 'Staff Product Engineer' },
     participants: [
-      { id: 'u1', name: 'Jibran', email: 'jibran@meetflow.ai' },
-      { id: 'u2', name: 'Sarah Connor', email: 'sarah@meetflow.ai' },
+      { id: 'u1', name: 'Jibran', email: 'jibran@meetflow.ai', role: 'Staff Product Engineer' },
+      { id: 'u2', name: 'Sarah Connor', email: 'sarah@meetflow.ai', role: 'Principal Architect' },
     ],
-    previewSummary: 'Micro-recording used to verify baseline transcript parsing and zero-duration safety checks.',
-    tags: ['QA', 'Test', 'Ingestion'],
-    actionItemCount: 0,
-    highlightCount: 0,
+    previewSummary: 'Verified 40-second audio recording synchronized to multi-speaker transcript turns with sub-second accuracy.',
+    tags: ['Verified Audio', 'HTML5 Player', 'Transcript Sync'],
+    actionItemCount: 2,
+    highlightCount: 2,
     hasRecording: true,
     hasTranscript: true,
     summary: {
-      executiveSummary: 'Short call verified that files under 3 minutes are indexed without timestamp calculation defects.',
-      keyTakeaways: ['Duration rounding functions correctly for sub-minute segments.'],
-      decisions: ['Passed sanity checklist.'],
+      executiveSummary:
+        'Technical verification call validating native HTML5 audio playback, interactive transcript seeking, sub-250ms timeline offset synchronization, and speed rate changes.',
+      keyTakeaways: [
+        'Native HTML5 audio playback rate controls confirmed at 1x, 1.25x, 1.5x, and 2x.',
+        'Transcript turn clicking seeks audio player to exact second offsets.',
+        'Timeline offset threshold verified under 250 milliseconds.',
+      ],
+      decisions: [
+        'Approved the sub-second transcript scrubbing pipeline for production deployment.',
+      ],
+      templates: {
+        general: {
+          templateId: 'general',
+          label: 'General',
+          description: 'Standard meeting synthesis with key takeaways and next steps',
+          sections: [
+            {
+              title: 'Overview',
+              items: [
+                {
+                  text: 'Technical verification call validating native HTML5 audio playback, interactive transcript seeking, and sub-250ms timeline offset synchronization.',
+                  timestampSeconds: 0,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Key Takeaways',
+              items: [
+                {
+                  text: 'Evaluating native HTML5 audio playback, interactive transcript seeking, and playback speed controls.',
+                  timestampSeconds: 7,
+                  speakerName: 'Sarah Connor',
+                },
+                {
+                  text: 'Approved the sub-second transcript scrubbing pipeline.',
+                  timestampSeconds: 17,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Decisions',
+              items: [
+                {
+                  text: 'Marked engineering decision approving the sub-second transcript scrubbing pipeline.',
+                  timestampSeconds: 17,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Next Steps',
+              items: [
+                {
+                  text: 'Assign action item to Alex to verify the audio timeline offset under 250 milliseconds.',
+                  timestampSeconds: 24,
+                  speakerName: 'Sarah Connor',
+                },
+              ],
+            },
+          ],
+        },
+        engineering: {
+          templateId: 'engineering',
+          label: 'Engineering Sync',
+          description: 'Technical architecture, dependencies, blockers, and performance requirements',
+          sections: [
+            {
+              title: 'Technical Decisions',
+              items: [
+                {
+                  text: 'Architectural approval granted for sub-second transcript scrubbing pipeline.',
+                  timestampSeconds: 17,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Dependencies & Infrastructure',
+              items: [
+                {
+                  text: 'Native HTML5 audio element binding with precise currentTime seek handlers.',
+                  timestampSeconds: 7,
+                  speakerName: 'Sarah Connor',
+                },
+              ],
+            },
+            {
+              title: 'Performance & Latency Thresholds',
+              items: [
+                {
+                  text: 'Audio timeline seek sync offset must remain strictly under 250 milliseconds.',
+                  timestampSeconds: 24,
+                  speakerName: 'Sarah Connor',
+                },
+              ],
+            },
+            {
+              title: 'Owners & Delivery',
+              items: [
+                {
+                  text: 'Alex Vance assigned to execute latency benchmarking script against local audio buffer.',
+                  timestampSeconds: 24,
+                  speakerName: 'Alex Vance',
+                },
+              ],
+            },
+          ],
+        },
+        executive: {
+          templateId: 'executive',
+          label: 'Executive Brief',
+          description: 'High-level executive takeaways, strategic decisions, and deliverables',
+          sections: [
+            {
+              title: 'Executive Summary',
+              items: [
+                {
+                  text: 'Verified audio recording and synchronized transcript architecture operational with native HTML5 playback.',
+                  timestampSeconds: 0,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Strategic Decisions',
+              items: [
+                {
+                  text: 'Approved the sub-second transcript scrubbing pipeline for SaaS production readiness.',
+                  timestampSeconds: 17,
+                  speakerName: 'Jibran',
+                },
+              ],
+            },
+            {
+              title: 'Owners & Deadlines',
+              items: [
+                {
+                  text: 'Alex Vance to verify audio timeline offset under 250ms by end of milestone sprint.',
+                  timestampSeconds: 24,
+                  speakerName: 'Sarah Connor',
+                },
+              ],
+            },
+          ],
+        },
+      },
     },
+    transcriptTurns: [
+      {
+        id: 't-demo-1',
+        speakerName: 'Jibran',
+        startTime: 0,
+        endTime: 7,
+        text: 'Welcome to MeetFlow AI. This is our verified audio recording and synchronized transcript test call.',
+      },
+      {
+        id: 't-demo-2',
+        speakerName: 'Sarah Connor',
+        startTime: 7,
+        endTime: 17,
+        text: 'Thanks Jibran. We are evaluating native HTML5 audio playback, interactive transcript seeking, and playback speed controls.',
+      },
+      {
+        id: 't-demo-3',
+        speakerName: 'Jibran',
+        startTime: 17,
+        endTime: 24,
+        text: 'I will mark an engineering decision here: we are approving the sub-second transcript scrubbing pipeline.',
+      },
+      {
+        id: 't-demo-4',
+        speakerName: 'Sarah Connor',
+        startTime: 24,
+        endTime: 33,
+        text: 'Agreed. I will assign an action item to Alex to verify the audio timeline offset under 250 milliseconds.',
+      },
+      {
+        id: 't-demo-5',
+        speakerName: 'Jibran',
+        startTime: 33,
+        endTime: 40,
+        text: 'Excellent. Let us conclude this verified recording and inspect the real-time AI summary and action items.',
+      },
+    ],
+    actionItems: [
+      {
+        id: 'act-demo-1',
+        meetingId: 'meet-08',
+        meetingTitle: 'Verified Recording Sync & Playback Test Call',
+        title: 'Verify audio timeline offset under 250 milliseconds',
+        assigneeName: 'Alex Vance',
+        dueDate: '2026-11-03',
+        priority: 'high',
+        completed: false,
+        timestampSeconds: 24,
+      },
+      {
+        id: 'act-demo-2',
+        meetingId: 'meet-08',
+        meetingTitle: 'Verified Recording Sync & Playback Test Call',
+        title: 'Confirm HTML5 audio seek behavior on mobile browsers',
+        assigneeName: 'Jibran',
+        dueDate: '2026-11-04',
+        priority: 'medium',
+        completed: true,
+        timestampSeconds: 7,
+      },
+    ],
+    highlights: [
+      {
+        id: 'hl-demo-1',
+        meetingId: 'meet-08',
+        label: 'Sub-second Scrubbing Approval',
+        tag: 'Decision',
+        startTime: 17,
+        quote: 'We are approving the sub-second transcript scrubbing pipeline.',
+      },
+      {
+        id: 'hl-demo-2',
+        meetingId: 'meet-08',
+        label: 'Timeline Offset Threshold',
+        tag: 'Action Item',
+        startTime: 24,
+        quote: 'Verify the audio timeline offset under 250 milliseconds.',
+      },
+    ],
   },
   {
     id: 'meet-09',
@@ -483,4 +714,279 @@ export function getAllSeededActionItems(): ActionItemData[] {
     }
   }
   return items;
+}
+
+export function getMeetingSummaryTemplates(
+  meeting: MeetingItem
+): Record<SummaryTemplateId, SummaryTemplateContent> {
+  const custom = meeting.summary?.templates || {};
+
+  const generalSections = [
+    {
+      title: 'Overview',
+      items: [
+        {
+          text: meeting.summary?.executiveSummary || meeting.previewSummary,
+          timestampSeconds: 0,
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Key Takeaways',
+      items: (meeting.summary?.keyTakeaways || []).map((t, idx) => ({
+        text: t,
+        timestampSeconds: Math.min(meeting.durationSeconds, 20 + idx * 35),
+        speakerName: meeting.participants[idx % meeting.participants.length]?.name,
+      })),
+    },
+    {
+      title: 'Decisions',
+      items: (meeting.summary?.decisions || []).map((d, idx) => ({
+        text: d,
+        timestampSeconds: Math.min(meeting.durationSeconds, 30 + idx * 50),
+        speakerName: meeting.organizer.name,
+      })),
+    },
+    {
+      title: 'Next Steps',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: `${a.title}${a.assigneeName ? ` (Assigned to ${a.assigneeName})` : ''}`,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  const executiveSections = [
+    {
+      title: 'Executive Summary',
+      items: [
+        {
+          text: meeting.summary?.executiveSummary || meeting.previewSummary,
+          timestampSeconds: 0,
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Strategic Decisions',
+      items: (meeting.summary?.decisions || []).map((d, idx) => ({
+        text: d,
+        timestampSeconds: Math.min(meeting.durationSeconds, 30 + idx * 45),
+        speakerName: meeting.organizer.name,
+      })),
+    },
+    {
+      title: 'Operational Risks',
+      items: [
+        {
+          text: 'Dependencies on external service SLAs and network pipeline thresholds.',
+          timestampSeconds: Math.min(meeting.durationSeconds, 15),
+          speakerName: meeting.participants[1]?.name || meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Owners & Deadlines',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: `${a.title} — ${a.assigneeName || 'Unassigned'}${a.dueDate ? ` (Due: ${a.dueDate})` : ''}`,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  const salesSections = [
+    {
+      title: 'Customer Needs & Goals',
+      items: [
+        {
+          text: meeting.previewSummary,
+          timestampSeconds: 0,
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Objections & Questions',
+      items: [
+        {
+          text: 'Inquired about enterprise encryption, custom data retention windows, and latency.',
+          timestampSeconds: Math.min(meeting.durationSeconds, 45),
+          speakerName: meeting.participants[1]?.name || 'Prospect',
+        },
+      ],
+    },
+    {
+      title: 'Buying Signals',
+      items: [
+        {
+          text: 'Positive engagement regarding sub-100ms transcript sync and automated summaries.',
+          timestampSeconds: Math.min(meeting.durationSeconds, 60),
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Commitments & Follow-up',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: a.title,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  const productSections = [
+    {
+      title: 'Problem Statements',
+      items: [
+        {
+          text: meeting.previewSummary,
+          timestampSeconds: 0,
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Proposed Solutions',
+      items: (meeting.summary?.keyTakeaways || []).map((k, idx) => ({
+        text: k,
+        timestampSeconds: Math.min(meeting.durationSeconds, 25 + idx * 30),
+        speakerName: meeting.participants[idx % meeting.participants.length]?.name,
+      })),
+    },
+    {
+      title: 'Product Decisions',
+      items: (meeting.summary?.decisions || []).map((d, idx) => ({
+        text: d,
+        timestampSeconds: Math.min(meeting.durationSeconds, 40 + idx * 40),
+        speakerName: meeting.organizer.name,
+      })),
+    },
+    {
+      title: 'Next Steps & Roadmap Impact',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: a.title,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  const engineeringSections = [
+    {
+      title: 'Technical Decisions',
+      items: (meeting.summary?.decisions || []).map((d, idx) => ({
+        text: d,
+        timestampSeconds: Math.min(meeting.durationSeconds, 20 + idx * 35),
+        speakerName: meeting.organizer.name,
+      })),
+    },
+    {
+      title: 'Dependencies & Infrastructure',
+      items: (meeting.summary?.keyTakeaways || []).map((k, idx) => ({
+        text: k,
+        timestampSeconds: Math.min(meeting.durationSeconds, 15 + idx * 30),
+        speakerName: meeting.participants[idx % meeting.participants.length]?.name,
+      })),
+    },
+    {
+      title: 'Blockers & Verification Requirements',
+      items: [
+        {
+          text: 'Maintain strict 250ms offset tolerance and zero memory leaks during scrubbing.',
+          timestampSeconds: Math.min(meeting.durationSeconds, 50),
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Owners & Delivery',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: `${a.title} [${a.priority.toUpperCase()}] — ${a.assigneeName || 'Unassigned'}`,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  const interviewSections = [
+    {
+      title: 'Candidate Background & Role Fit',
+      items: [
+        {
+          text: meeting.previewSummary,
+          timestampSeconds: 0,
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Strengths & Technical Highlights',
+      items: (meeting.summary?.keyTakeaways || []).map((k, idx) => ({
+        text: k,
+        timestampSeconds: Math.min(meeting.durationSeconds, 20 + idx * 30),
+        speakerName: meeting.participants[idx % meeting.participants.length]?.name,
+      })),
+    },
+    {
+      title: 'Open Questions & Evaluation',
+      items: [
+        {
+          text: 'Deep dive into concurrent state synchronization and optimistic updates.',
+          timestampSeconds: Math.min(meeting.durationSeconds, 45),
+          speakerName: meeting.organizer.name,
+        },
+      ],
+    },
+    {
+      title: 'Next Steps & Hiring Decision',
+      items: (meeting.actionItems || []).map((a) => ({
+        text: a.title,
+        timestampSeconds: a.timestampSeconds,
+        speakerName: a.assigneeName,
+      })),
+    },
+  ];
+
+  return {
+    general: custom.general || {
+      templateId: 'general',
+      label: 'General',
+      description: 'Standard meeting synthesis with key takeaways and next steps',
+      sections: generalSections,
+    },
+    executive: custom.executive || {
+      templateId: 'executive',
+      label: 'Executive Brief',
+      description: 'High-level executive takeaways, strategic decisions, and deliverables',
+      sections: executiveSections,
+    },
+    sales: custom.sales || {
+      templateId: 'sales',
+      label: 'Sales Call',
+      description: 'Customer needs, objections, buying signals, and commitments',
+      sections: salesSections,
+    },
+    product: custom.product || {
+      templateId: 'product',
+      label: 'Product Meeting',
+      description: 'Problem statements, proposed solutions, decisions, and open questions',
+      sections: productSections,
+    },
+    engineering: custom.engineering || {
+      templateId: 'engineering',
+      label: 'Engineering Sync',
+      description: 'Technical architecture, dependencies, blockers, and performance requirements',
+      sections: engineeringSections,
+    },
+    interview: custom.interview || {
+      templateId: 'interview',
+      label: 'Interview',
+      description: 'Candidate background, technical evaluation, strengths, and recommendations',
+      sections: interviewSections,
+    },
+  };
 }

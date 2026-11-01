@@ -35,15 +35,51 @@ export interface HighlightData {
   id: string;
   meetingId: string;
   label: string;
-  tag: string;
+  tag: 'Important' | 'Decision' | 'Action Item' | 'Question' | 'Customer Insight' | string;
   startTime: number;
   quote?: string;
+}
+
+export type SummaryTemplateId =
+  | 'general'
+  | 'executive'
+  | 'sales'
+  | 'product'
+  | 'engineering'
+  | 'interview';
+
+export interface SummaryEvidenceItem {
+  text: string;
+  timestampSeconds?: number;
+  speakerName?: string;
+}
+
+export interface SummarySection {
+  title: string;
+  items: SummaryEvidenceItem[];
+}
+
+export interface SummaryTemplateContent {
+  templateId: SummaryTemplateId;
+  label: string;
+  description: string;
+  sections: SummarySection[];
 }
 
 export interface MeetingSummary {
   executiveSummary: string;
   keyTakeaways: string[];
   decisions: string[];
+  templates?: Partial<Record<SummaryTemplateId, SummaryTemplateContent>>;
+}
+
+export interface MeetingClip {
+  id: string;
+  meetingId: string;
+  title: string;
+  startTime: number;
+  endTime: number;
+  createdAt: string;
 }
 
 export interface MeetingItem {
@@ -62,9 +98,11 @@ export interface MeetingItem {
   hasRecording: boolean;
   hasTranscript: boolean;
   recordingUrl?: string;
+  isVerifiedAudio?: boolean;
   summary?: MeetingSummary;
   transcriptTurns?: TranscriptTurnItem[];
   actionItems?: ActionItemData[];
   highlights?: HighlightData[];
+  clips?: MeetingClip[];
   failureReason?: string;
 }

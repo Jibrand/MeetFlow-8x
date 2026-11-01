@@ -1,48 +1,31 @@
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
-import { getAllSeededActionItems } from '../../data/seeded-meetings';
 import { ActionItemData } from '../../types/meeting';
 import { ActionItemRow, Input, Button, Badge, EmptyState, toast } from '@meetflow/ui';
 import { Search, CheckCircle2, Clock, CheckSquare } from 'lucide-react';
-
-const STORAGE_KEY = 'meetflow-action-items-state';
+import {
+  getMergedActionItems,
+  toggleActionItemCompleted,
+  subscribeToActionItemChanges,
+} from '../meeting-detail/lib/action-items-store';
 
 export function ActionItemsView() {
-  const [actionItems, setActionItems] = React.useState<ActionItemData[]>(() => {
-    const seeded = getAllSeededActionItems();
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const overrides: Record<string, boolean> = JSON.parse(stored);
-        return seeded.map((item) => ({
-          ...item,
-          completed: overrides[item.id] !== undefined ? overrides[item.id] : item.completed,
-        }));
-      }
-    } catch {
-      // Ignore localStorage read errors
-    }
-    return seeded;
-  });
+  const [actionItems, setActionItems] = React.useState<ActionItemData[]>(() =>
+    getMergedActionItems()
+  );
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeToActionItemChanges(() => {
+      setActionItems(getMergedActionItems());
+    });
+    return unsubscribe;
+  }, []);
 
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState<'all' | 'open' | 'completed'>('all');
 
   const handleToggle = (id: string, completed: boolean) => {
-    setActionItems((prev) => {
-      const next = prev.map((item) => (item.id === id ? { ...item, completed } : item));
-      try {
-        const overrides: Record<string, boolean> = {};
-        next.forEach((item) => {
-          overrides[item.id] = item.completed;
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
-      } catch {
-        // Ignore localStorage write errors
-      }
-      return next;
-    });
-
+    toggleActionItemCompleted(id, completed);
     if (completed) {
       toast.success('Task marked completed');
     }
