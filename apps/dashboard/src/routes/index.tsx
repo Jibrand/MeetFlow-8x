@@ -16,7 +16,7 @@ function HomeComponent() {
       <div className="space-y-3">
         <div className="inline-flex items-center gap-1.5 rounded-full border bg-secondary/50 px-2.5 py-0.5 text-[11px] font-medium text-secondary-foreground">
           <Sparkles className="h-3 w-3 text-primary" />
-          <span>8x Assignment — Phase 01: Engineering Foundation</span>
+          <span>8x Assignment — Phase 02: Design System & Layout Shell</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           MeetFlow AI Workspace

@@ -1,0 +1,78 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Sidebar } from './sidebar';
+
+// Mock TanStack Router
+vi.mock('@tanstack/react-router', () => {
+  const React = require('react');
+  const Link = React.forwardRef(({ children, to, onClick, className }: any, ref: any) => (
+    <a ref={ref} href={to} onClick={onClick} className={className}>
+      {children}
+    </a>
+  ));
+  Link.displayName = 'Link';
+  return {
+    Link,
+    useRouterState: () => ({
+      location: {
+        pathname: '/',
+      },
+    }),
+  };
+});
+
+// Mock theme provider
+vi.mock('../../providers/theme-provider', () => ({
+  useTheme: () => ({
+    theme: 'light',
+    setTheme: vi.fn(),
+  }),
+}));
+
+describe('Sidebar Component', () => {
+  it('renders primary navigation items in expanded mode', () => {
+    render(
+      <Sidebar
+        collapsed={false}
+        onToggleCollapse={vi.fn()}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Meetings')).toBeDefined();
+    expect(screen.getByText('Action Items')).toBeDefined();
+    expect(screen.getByText('Calendar')).toBeDefined();
+    expect(screen.getByText('Ask MeetFlow')).toBeDefined();
+    expect(screen.getByText('Settings')).toBeDefined();
+  });
+
+  it('triggers onToggleCollapse when collapse button is clicked', () => {
+    const toggleSpy = vi.fn();
+    render(
+      <Sidebar
+        collapsed={false}
+        onToggleCollapse={toggleSpy}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
+      />
+    );
+
+    const toggleBtn = screen.getByRole('button', { name: /collapse sidebar/i });
+    fireEvent.click(toggleBtn);
+    expect(toggleSpy).toHaveBeenCalled();
+  });
+
+  it('hides text labels when collapsed is true', () => {
+    render(
+      <Sidebar
+        collapsed={true}
+        onToggleCollapse={vi.fn()}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Product Workspace')).toBeNull();
+  });
+});
