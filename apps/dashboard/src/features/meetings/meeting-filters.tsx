@@ -1,4 +1,4 @@
-import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { Search, X, SlidersHorizontal, LayoutList, LayoutGrid } from 'lucide-react';
 import { Input, Button, Badge } from '@meetflow/ui';
 import { MeetingStatus, MeetingPlatform } from '../../types/meeting';
 
@@ -7,6 +7,7 @@ export interface MeetingFiltersState {
   status: 'all' | MeetingStatus;
   platform: 'all' | MeetingPlatform;
   sort: 'newest' | 'oldest' | 'longest';
+  layout?: 'list' | 'grid';
 }
 
 export interface MeetingFiltersProps {
@@ -34,8 +35,11 @@ export function MeetingFilters({
       status: 'all',
       platform: 'all',
       sort: 'newest',
+      layout: filters.layout,
     });
   };
+
+  const layout = filters.layout || 'list';
 
   return (
     <div className="space-y-3">
@@ -69,7 +73,7 @@ export function MeetingFilters({
               onChange({ ...filters, status: e.target.value as MeetingFiltersState['status'] })
             }
             aria-label="Filter by Status"
-            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Statuses</option>
             <option value="ready">Ready</option>
@@ -88,7 +92,7 @@ export function MeetingFilters({
               })
             }
             aria-label="Filter by Platform"
-            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Platforms</option>
             <option value="meet">Google Meet</option>
@@ -104,12 +108,42 @@ export function MeetingFilters({
               onChange({ ...filters, sort: e.target.value as MeetingFiltersState['sort'] })
             }
             aria-label="Sort Order"
-            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
             <option value="longest">Longest Duration</option>
           </select>
+
+          {/* List / Grid view switcher */}
+          <div className="hidden sm:flex items-center rounded-md border border-border bg-card p-0.5">
+            <button
+              type="button"
+              onClick={() => onChange({ ...filters, layout: 'list' })}
+              aria-label="List view"
+              className={`rounded p-1 transition-colors ${
+                layout === 'list'
+                  ? 'bg-secondary text-primary font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              title="List View"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...filters, layout: 'grid' })}
+              aria-label="Grid view"
+              className={`rounded p-1 transition-colors ${
+                layout === 'grid'
+                  ? 'bg-secondary text-primary font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           {hasActiveFilters && (
             <Button

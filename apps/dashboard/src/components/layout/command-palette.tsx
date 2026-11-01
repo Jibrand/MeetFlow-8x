@@ -16,7 +16,7 @@ import {
   Calendar,
   Sparkles,
   Settings,
-  Compass,
+  LayoutDashboard,
   ArrowRight,
 } from 'lucide-react';
 
@@ -47,12 +47,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [open, onOpenChange]);
 
   const navigationItems = [
+    { label: 'Overview', path: '/overview', icon: LayoutDashboard },
     { label: 'My Meetings', path: '/', icon: Video },
     { label: 'Action Items', path: '/actions', icon: CheckSquare },
-    { label: 'Calendar Schedule', path: '/calendar', icon: Calendar },
-    { label: 'Ask MeetFlow AI', path: '/ask', icon: Sparkles },
-    { label: 'Workspace Settings', path: '/settings', icon: Settings },
-    { label: 'Design System Showcase', path: '/design', icon: Compass },
+    { label: 'Calendar', path: '/calendar', icon: Calendar },
+    { label: 'Ask MeetFlow', path: '/ask', icon: Sparkles },
+    { label: 'Settings', path: '/settings', icon: Settings },
   ];
 
   const filteredNav = navigationItems.filter((item) =>

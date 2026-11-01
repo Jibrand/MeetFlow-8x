@@ -13,11 +13,14 @@ vi.mock('@tanstack/react-router', () => {
   Link.displayName = 'Link';
   return {
     Link,
-    useRouterState: () => ({
-      location: {
-        pathname: '/',
-      },
-    }),
+    useRouterState: (opts?: { select?: (s: any) => any }) => {
+      const state = {
+        location: {
+          pathname: '/',
+        },
+      };
+      return opts?.select ? opts.select(state) : state;
+    },
   };
 });
 
@@ -40,7 +43,8 @@ describe('Sidebar Component', () => {
       />
     );
 
-    expect(screen.getByText('Meetings')).toBeDefined();
+    expect(screen.getByText('Overview')).toBeDefined();
+    expect(screen.getByText('My Meetings')).toBeDefined();
     expect(screen.getByText('Action Items')).toBeDefined();
     expect(screen.getByText('Calendar')).toBeDefined();
     expect(screen.getByText('Ask MeetFlow')).toBeDefined();

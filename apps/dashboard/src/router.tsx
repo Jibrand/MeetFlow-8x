@@ -1,6 +1,7 @@
 import { createRouter, createRoute } from '@tanstack/react-router';
 import { rootRoute } from './routes/root';
 import { indexRoute, MeetingsPage } from './routes/index';
+import { overviewRoute } from './routes/overview';
 import { designRoute } from './routes/design';
 import { meetingDetailRoute } from './routes/meeting-detail';
 import { actionsRoute } from './routes/actions';
@@ -17,6 +18,7 @@ const meetingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  overviewRoute,
   meetingsRoute,
   meetingDetailRoute,
   actionsRoute,

@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { MeetingItem } from '../../types/meeting';
 import { MeetingRow } from './meeting-row';
+import { MeetingCard } from './meeting-card';
 import { MeetingFilters, MeetingFiltersState } from './meeting-filters';
 import { EmptyState } from '@meetflow/ui';
 import { VideoOff } from 'lucide-react';
+import { groupMeetingsByDate } from '../../lib/meeting-format';
 
 export interface MeetingListProps {
   meetings: MeetingItem[];
@@ -19,9 +21,10 @@ export function MeetingList({ meetings }: MeetingListProps) {
         status: (params.get('status') as MeetingFiltersState['status']) || 'all',
         platform: (params.get('platform') as MeetingFiltersState['platform']) || 'all',
         sort: (params.get('sort') as MeetingFiltersState['sort']) || 'newest',
+        layout: (params.get('layout') as 'list' | 'grid') || 'list',
       };
     } catch {
-      return { search: '', status: 'all', platform: 'all', sort: 'newest' };
+      return { search: '', status: 'all', platform: 'all', sort: 'newest', layout: 'list' };
     }
   });
 
@@ -40,6 +43,9 @@ export function MeetingList({ meetings }: MeetingListProps) {
 
       if (filters.sort !== 'newest') url.searchParams.set('sort', filters.sort);
       else url.searchParams.delete('sort');
+
+      if (filters.layout && filters.layout !== 'list') url.searchParams.set('layout', filters.layout);
+      else url.searchParams.delete('layout');
 
       window.history.replaceState({}, '', url.toString());
     } catch {
@@ -89,8 +95,15 @@ export function MeetingList({ meetings }: MeetingListProps) {
     return result;
   }, [meetings, filters]);
 
+  // Date grouped buckets for Fathom-like recording organization
+  const groupedMeetings = React.useMemo(() => {
+    return groupMeetingsByDate(filteredMeetings);
+  }, [filteredMeetings]);
+
+  const isGrid = filters.layout === 'grid';
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Search & Filter Bar */}
       <MeetingFilters
         filters={filters}
@@ -101,9 +114,32 @@ export function MeetingList({ meetings }: MeetingListProps) {
 
       {/* Meeting Rows or Empty State */}
       {filteredMeetings.length > 0 ? (
-        <div className="space-y-2">
-          {filteredMeetings.map((meeting) => (
-            <MeetingRow key={meeting.id} meeting={meeting} />
+        <div className="space-y-6">
+          {groupedMeetings.map(({ group, meetings: groupItems }) => (
+            <section key={group} className="space-y-2.5">
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group}
+                </span>
+                <span className="text-[11px] font-mono text-muted-foreground/60">
+                  ({groupItems.length})
+                </span>
+              </div>
+
+              {isGrid ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {groupItems.map((meeting) => (
+                    <MeetingCard key={meeting.id} meeting={meeting} />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {groupItems.map((meeting) => (
+                    <MeetingRow key={meeting.id} meeting={meeting} />
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       ) : (
@@ -118,6 +154,7 @@ export function MeetingList({ meetings }: MeetingListProps) {
               status: 'all',
               platform: 'all',
               sort: 'newest',
+              layout: filters.layout,
             })
           }
         />

@@ -54,7 +54,10 @@ const config: Config = {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',
           border: 'hsl(var(--sidebar-border))',
+          hover: 'hsl(var(--sidebar-hover))',
+          active: 'hsl(var(--sidebar-active))',
         },
+        elevated: 'hsl(var(--elevated))',
       },
       borderRadius: {
         lg: 'var(--radius)',

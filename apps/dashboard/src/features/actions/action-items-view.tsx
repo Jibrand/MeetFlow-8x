@@ -2,12 +2,13 @@ import * as React from 'react';
 import { Link } from '@tanstack/react-router';
 import { ActionItemData } from '../../types/meeting';
 import { ActionItemRow, Input, Button, Badge, EmptyState, toast } from '@meetflow/ui';
-import { Search, CheckCircle2, Clock, CheckSquare } from 'lucide-react';
+import { Search, CheckCircle2, Clock, CheckSquare, AlertTriangle } from 'lucide-react';
 import {
   getMergedActionItems,
   toggleActionItemCompleted,
   subscribeToActionItemChanges,
 } from '../meeting-detail/lib/action-items-store';
+import { isOverdue } from './use-action-items';
 
 export function ActionItemsView() {
   const [actionItems, setActionItems] = React.useState<ActionItemData[]>(() =>
@@ -22,7 +23,8 @@ export function ActionItemsView() {
   }, []);
 
   const [search, setSearch] = React.useState('');
-  const [filter, setFilter] = React.useState<'all' | 'open' | 'completed'>('all');
+  const [filter, setFilter] = React.useState<'all' | 'open' | 'completed' | 'overdue'>('all');
+  const now = React.useMemo(() => new Date(), []);
 
   const handleToggle = (id: string, completed: boolean) => {
     toggleActionItemCompleted(id, completed);
@@ -31,10 +33,18 @@ export function ActionItemsView() {
     }
   };
 
+  const overdueCount = React.useMemo(
+    () => actionItems.filter((i) => isOverdue(i, now)).length,
+    [actionItems, now]
+  );
+  const openCount = actionItems.filter((i) => !i.completed).length;
+  const completedCount = actionItems.filter((i) => i.completed).length;
+
   const filteredItems = React.useMemo(() => {
     return actionItems.filter((item) => {
       if (filter === 'open' && item.completed) return false;
       if (filter === 'completed' && !item.completed) return false;
+      if (filter === 'overdue' && !isOverdue(item, now)) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         return (
@@ -45,23 +55,26 @@ export function ActionItemsView() {
       }
       return true;
     });
-  }, [actionItems, filter, search]);
-
-  const openCount = actionItems.filter((i) => !i.completed).length;
-  const completedCount = actionItems.filter((i) => i.completed).length;
+  }, [actionItems, filter, search, now]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
               Action Items
             </h1>
             <Badge variant="secondary" className="text-xs">
               {openCount} Open
             </Badge>
+            {overdueCount > 0 && (
+              <Badge variant="destructive" className="text-xs gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                <span>{overdueCount} Overdue</span>
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             Extracted automated action items and assigned deliverables across all meeting calls.
@@ -69,7 +82,7 @@ export function ActionItemsView() {
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 bg-muted/50 p-1 rounded-lg border border-border/50">
+        <div className="flex flex-wrap items-center gap-1.5 bg-secondary/60 p-1 rounded-lg border border-border">
           <Button
             variant={filter === 'all' ? 'default' : 'ghost'}
             size="sm"
@@ -96,6 +109,17 @@ export function ActionItemsView() {
             <CheckCircle2 className="h-3 w-3" />
             <span>Done ({completedCount})</span>
           </Button>
+          {overdueCount > 0 && (
+            <Button
+              variant={filter === 'overdue' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setFilter('overdue')}
+              className="h-7 text-xs px-2.5 gap-1 text-destructive hover:text-destructive"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              <span>Overdue ({overdueCount})</span>
+            </Button>
+          )}
         </div>
       </div>
 
