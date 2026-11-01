@@ -27,11 +27,28 @@ describe('AuthAdapter with Real API Integration', () => {
     vi.clearAllMocks();
   });
 
-  it('allows logging out and clears user state', async () => {
+  it('allows logging out and clears user state immediately', async () => {
     vi.mocked(apiModule.apiClient).mockResolvedValue({ message: 'Logged out' });
-    await authAdapter.logout();
+    const logoutPromise = authAdapter.logout();
+    // Synchronously cleared state
     expect(authAdapter.getCurrentUser()).toBeNull();
     expect(authAdapter.isAuthenticated()).toBe(false);
+    await logoutPromise;
+    expect(authAdapter.getCurrentUser()).toBeNull();
+  });
+
+  it('strictly requires server verification and does not trust arbitrary client storage', async () => {
+    // Attempt to inject fake session in sessionStorage
+    sessionStorage.setItem('meetflow-session-cache', JSON.stringify({ name: 'Hacker', role: 'ADMIN' }));
+    // Server rejects session with 401
+    vi.mocked(apiModule.apiClient).mockRejectedValue(
+      new apiModule.ApiError(401, { code: 'UNAUTHORIZED', message: 'Session expired' })
+    );
+
+    const user = await authAdapter.syncSessionWithServer();
+    expect(user).toBeNull();
+    expect(authAdapter.isAuthenticated()).toBe(false);
+    expect(sessionStorage.getItem('meetflow-session-cache')).toBeNull();
   });
 
   it('allows logging in with valid credentials via API and updates session', async () => {

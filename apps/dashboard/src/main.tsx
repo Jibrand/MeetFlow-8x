@@ -21,7 +21,18 @@ const queryClient = new QueryClient({
 
 function ThemedToaster() {
   const { resolvedTheme } = useTheme();
-  return <Toaster theme={resolvedTheme} position="bottom-right" />;
+  return (
+    <Toaster
+      theme={resolvedTheme}
+      position="top-center"
+      richColors
+      closeButton
+      offset="16px"
+      toastOptions={{
+        className: 'font-sans text-xs shadow-md border rounded-lg',
+      }}
+    />
+  );
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

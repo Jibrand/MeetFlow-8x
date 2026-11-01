@@ -5,8 +5,8 @@ import { Sidebar } from './sidebar';
 // Mock TanStack Router
 vi.mock('@tanstack/react-router', () => {
   const React = require('react');
-  const Link = React.forwardRef(({ children, to, onClick, className }: any, ref: any) => (
-    <a ref={ref} href={to} onClick={onClick} className={className}>
+  const Link = React.forwardRef(({ children, to, onClick, className, ...rest }: any, ref: any) => (
+    <a ref={ref} href={to} onClick={onClick} className={className} {...rest}>
       {children}
     </a>
   ));
@@ -78,6 +78,22 @@ describe('Sidebar Component', () => {
       />
     );
 
-    expect(screen.queryByText('Product Workspace')).toBeNull();
+    expect(screen.queryByText('Overview')).toBeNull();
+  });
+
+  it('renders dynamic workspace name and handles truncation', () => {
+    render(
+      <Sidebar
+        collapsed={false}
+        onToggleCollapse={vi.fn()}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
+      />
+    );
+
+    // Verify workspace link exists and has proper title attribute
+    const brandLink = screen.getByRole('link', { name: /home/i });
+    expect(brandLink).toBeDefined();
+    expect(brandLink.getAttribute('title')).toBeTruthy();
   });
 });

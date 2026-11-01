@@ -24,30 +24,19 @@ type AuthListener = (user: AuthUser | null) => void;
 
 class AuthAdapter {
   private listeners = new Set<AuthListener>();
-  private currentUser: AuthUser | null;
+  private currentUser: AuthUser | null = null;
   private initialized = false;
   private apiAvailable = true;
   private apiError: string | null = null;
   private syncPromise: Promise<AuthUser | null> | null = null;
 
   constructor() {
-    this.currentUser = this.loadCachedUser();
+    // Never trust client storage before backend verification; start strictly unauthenticated
+    this.currentUser = null;
     // Verify session asynchronously with server
     if (typeof window !== 'undefined') {
       this.syncSessionWithServer();
     }
-  }
-
-  private loadCachedUser(): AuthUser | null {
-    try {
-      const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {
-      // sessionStorage unavailable
-    }
-    return null;
   }
 
   getUser(): AuthUser | null {
@@ -249,21 +238,22 @@ class AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    try {
-      await apiClient('/auth/logout', { method: 'POST' });
-    } catch {
-      // ignore network errors on logout
-    }
-
+    // 1. Immediately clear authenticated frontend state so no protected views remain accessible
+    this.currentUser = null;
     markSessionInvalid();
     try {
       sessionStorage.removeItem(AUTH_STORAGE_KEY);
     } catch {
       // ignore
     }
-
-    this.currentUser = null;
     this.notify();
+
+    // 2. Call backend to revoke database session and clear HTTP-only cookies
+    try {
+      await apiClient('/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network errors on logout
+    }
   }
 
   private setUser(user: AuthUser): void {

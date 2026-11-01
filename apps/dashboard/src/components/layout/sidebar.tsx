@@ -6,6 +6,7 @@ import { SidebarNav } from './sidebar-nav';
 import { ProfileMenu } from './profile-menu';
 import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS } from './nav-config';
 import { useActionItems } from '../../features/actions/use-action-items';
+import { authAdapter, AuthUser } from '../../features/auth/lib/auth-adapter';
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -19,6 +20,17 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const actionItems = useActionItems();
   const openCount = actionItems.filter((i) => !i.completed).length;
 
+  const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() =>
+    authAdapter.getCurrentUser()
+  );
+
+  React.useEffect(() => {
+    return authAdapter.subscribe((user) => setCurrentUser(user));
+  }, []);
+
+  const workspaceName = currentUser?.workspace || 'Workspace';
+  const roleLabel = currentUser?.role ? `${currentUser.role.toUpperCase()} WORKSPACE` : 'WORKSPACE';
+
   // Close mobile drawer with Escape
   React.useEffect(() => {
     if (!mobileOpen) return;
@@ -29,7 +41,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   const renderContent = (isCollapsed: boolean, isMobile: boolean) => (
     <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      {/* Brand */}
+      {/* Brand & Dynamic Workspace */}
       <div
         className={cn(
           'flex h-14 shrink-0 items-center gap-2',
@@ -39,16 +51,21 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         <Link
           to="/overview"
           onClick={onCloseMobile}
-          className="flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="MeetFlow AI home"
+          className="flex min-w-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden"
+          aria-label={`${workspaceName} home`}
+          title={workspaceName}
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
             <AudioLines className="h-4 w-4" />
           </span>
           {!isCollapsed && (
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-[13px] font-semibold tracking-tight">MeetFlow AI</span>
-              <span className="truncate text-[10px] text-muted-foreground">Product Workspace</span>
+            <span className="flex min-w-0 flex-col leading-tight overflow-hidden">
+              <span className="truncate text-[13px] font-semibold tracking-tight text-foreground" title={workspaceName}>
+                {workspaceName}
+              </span>
+              <span className="truncate text-[10px] font-medium text-muted-foreground">
+                {roleLabel}
+              </span>
             </span>
           )}
         </Link>

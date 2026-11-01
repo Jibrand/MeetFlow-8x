@@ -41,10 +41,10 @@ export function ProfileMenu({ collapsed, onNavigate }: ProfileMenuProps) {
       .toUpperCase() || 'MF';
   const displayWorkspace = user?.workspace || 'My Workspace';
 
-  const handleLogout = () => {
-    authAdapter.logout();
-    toast.success('Signed out of MeetFlow');
+  const handleLogout = async () => {
     onNavigate();
+    await authAdapter.logout();
+    toast.success('Signed out of MeetFlow');
     navigate({ to: '/login' });
   };
 
