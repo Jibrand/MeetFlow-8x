@@ -5,6 +5,11 @@ import * as apiModule from '../../lib/api-client';
 
 vi.mock('../../lib/api-client', () => ({
   apiClient: vi.fn(),
+  setSessionHint: vi.fn(),
+  resetSessionInvalidState: vi.fn(),
+  markSessionInvalid: vi.fn(),
+  hasSessionHint: vi.fn().mockReturnValue(false),
+  performTokenRefresh: vi.fn().mockResolvedValue(false),
   ApiError: class ApiError extends Error {
     code: string;
     status: number;
@@ -94,6 +99,29 @@ describe('AuthAdapter with Real API Integration', () => {
     const result = await authAdapter.login('wrong@example.com', 'badpassword');
     expect(result.success).toBe(false);
     expect(result.error).toBe('Invalid email or password.');
+  });
+
+  it('treats 401 from /auth/me as an expected unauthenticated state and keeps apiAvailable true', async () => {
+    vi.mocked(apiModule.apiClient).mockRejectedValue(
+      new apiModule.ApiError(401, { code: 'UNAUTHORIZED', message: 'Authentication required' })
+    );
+
+    const user = await authAdapter.syncSessionWithServer();
+    expect(user).toBeNull();
+    expect(authAdapter.isAuthenticated()).toBe(false);
+    expect(authAdapter.isApiAvailable()).toBe(true);
+    expect(authAdapter.getApiError()).toBeNull();
+  });
+
+  it('handles backend network unavailability separately and flags apiAvailable as false', async () => {
+    vi.mocked(apiModule.apiClient).mockRejectedValue(
+      new apiModule.ApiError(0, { code: 'API_UNAVAILABLE', message: 'Backend is offline.' })
+    );
+
+    const user = await authAdapter.syncSessionWithServer();
+    expect(user).toBeNull();
+    expect(authAdapter.isApiAvailable()).toBe(false);
+    expect(authAdapter.getApiError()).toBeTruthy();
   });
 });
 

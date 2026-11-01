@@ -22,10 +22,17 @@ if (!parsedEnv.success) {
   process.exit(1);
 }
 
+const defaultCorsOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const envCorsOrigins = (parsedEnv.data.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const resolvedCorsOrigins = Array.from(new Set([...defaultCorsOrigins, ...envCorsOrigins]));
+
 export const config = {
   env: parsedEnv.data.NODE_ENV,
   port: parsedEnv.data.PORT,
-  corsOrigin: parsedEnv.data.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+  corsOrigin: resolvedCorsOrigins,
   databaseUrl: parsedEnv.data.DATABASE_URL,
   directUrl: parsedEnv.data.DIRECT_URL,
   apiVersion: parsedEnv.data.API_VERSION,

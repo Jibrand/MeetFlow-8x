@@ -29,19 +29,90 @@ export class ApiError extends Error {
 }
 
 // Configurable API root URL: defaults to local backend /api/v1
-const API_BASE_URL =
+export const API_BASE_URL =
   ((import.meta as any).env?.VITE_API_URL as string) || 'http://localhost:4000/api/v1';
 
-let isRefreshing = false;
-let refreshSubscribers: ((success: boolean) => void)[] = [];
+// Client-side session existence indicator (non-sensitive boolean flag only; NEVER store tokens/JWTs here)
+const SESSION_ACTIVE_KEY = 'meetflow:session_active';
 
-function onRefreshed(success: boolean) {
-  refreshSubscribers.forEach((cb) => cb(success));
-  refreshSubscribers = [];
+export function hasSessionHint(): boolean {
+  try {
+    return localStorage.getItem(SESSION_ACTIVE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
-function addRefreshSubscriber(cb: (success: boolean) => void) {
-  refreshSubscribers.push(cb);
+export function setSessionHint(active: boolean): void {
+  try {
+    if (active) {
+      localStorage.setItem(SESSION_ACTIVE_KEY, '1');
+    } else {
+      localStorage.removeItem(SESSION_ACTIVE_KEY);
+    }
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+// In-flight refresh coordination: single shared promise prevents concurrent refresh spam
+let refreshPromise: Promise<boolean> | null = null;
+let sessionKnownInvalid = false;
+
+export function resetSessionInvalidState(): void {
+  sessionKnownInvalid = false;
+}
+
+export function markSessionInvalid(): void {
+  sessionKnownInvalid = true;
+  setSessionHint(false);
+}
+
+/**
+ * Perform a single controlled refresh call.
+ * Concurrent callers receive the identical in-flight promise.
+ */
+export async function performTokenRefresh(): Promise<boolean> {
+  // If a refresh is already underway, coalesce into that promise
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  // If session is already known to be invalid/missing and no hint exists, return false immediately
+  if (sessionKnownInvalid && !hasSessionHint()) {
+    return false;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // Send HTTP-only cookie
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        sessionKnownInvalid = false;
+        setSessionHint(true);
+        return true;
+      }
+
+      // Expected unauthenticated outcome (401 REFRESH_TOKEN_REQUIRED or INVALID_REFRESH_TOKEN)
+      sessionKnownInvalid = true;
+      setSessionHint(false);
+      return false;
+    } catch {
+      // Network error or backend unreachable
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function apiClient<T>(
@@ -69,52 +140,36 @@ export async function apiClient<T>(
   try {
     const response = await fetch(url, config);
 
-    // If 401 Unauthorized, attempt refresh once if not calling auth endpoints
-    if (
-      response.status === 401 &&
-      !endpoint.includes('/auth/login') &&
-      !endpoint.includes('/auth/register') &&
-      !endpoint.includes('/auth/refresh')
-    ) {
-      if (!isRefreshing) {
-        isRefreshing = true;
-        try {
-          const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: defaultHeaders,
-          });
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      const isAuthEndpoint =
+        endpoint.includes('/auth/login') ||
+        endpoint.includes('/auth/register') ||
+        endpoint.includes('/auth/refresh') ||
+        endpoint.includes('/auth/logout');
 
-          if (refreshRes.ok) {
-            isRefreshing = false;
-            onRefreshed(true);
+      // Attempt token refresh only for non-auth endpoints when a session is likely or not yet known invalid
+      if (!isAuthEndpoint && !sessionKnownInvalid) {
+        // If we have a session hint, attempt 1 controlled refresh
+        const shouldAttemptRefresh = hasSessionHint();
+        if (shouldAttemptRefresh) {
+          const refreshed = await performTokenRefresh();
+          if (refreshed) {
+            // Retry the original request with rotated credentials
             return apiClient<T>(endpoint, options);
-          } else {
-            isRefreshing = false;
-            onRefreshed(false);
           }
-        } catch {
-          isRefreshing = false;
-          onRefreshed(false);
+        } else {
+          // No session hint exists: visitor is unauthenticated, mark invalid to avoid spurious refreshes
+          sessionKnownInvalid = true;
         }
-      } else {
-        // Wait for active refresh to finish
-        const retryPromise = new Promise<T>((resolve, reject) => {
-          addRefreshSubscriber((success) => {
-            if (success) {
-              resolve(apiClient<T>(endpoint, options));
-            } else {
-              reject(
-                new ApiError(401, {
-                  code: 'UNAUTHORIZED',
-                  message: 'Session expired. Please sign in again.',
-                })
-              );
-            }
-          });
-        });
-        return retryPromise;
       }
+
+      const json = await response.json().catch(() => null);
+      const errPayload: ApiErrorPayload = json?.error || {
+        code: 'UNAUTHORIZED',
+        message: json?.message || response.statusText || 'Authentication required',
+      };
+      throw new ApiError(401, errPayload);
     }
 
     const json = await response.json().catch(() => null);
@@ -132,9 +187,10 @@ export async function apiClient<T>(
     if (error instanceof ApiError) {
       throw error;
     }
+    // Network / connection error (e.g. ERR_CONNECTION_REFUSED, fetch failed)
     throw new ApiError(0, {
-      code: 'NETWORK_ERROR',
-      message: (error as Error).message || 'Unable to connect to MeetFlow server',
+      code: 'API_UNAVAILABLE',
+      message: 'Unable to connect to MeetFlow API server at ' + API_BASE_URL + '. Backend is offline.',
     });
   }
 }

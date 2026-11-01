@@ -25,7 +25,7 @@ export function createApp(): Express {
         if (!origin || config.corsOrigin.includes(origin) || config.corsOrigin.includes('*')) {
           callback(null, true);
         } else {
-          callback(new Error(`Origin ${origin} not allowed by CORS`));
+          callback(null, false);
         }
       },
       credentials: true,
