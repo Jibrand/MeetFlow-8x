@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { Sidebar } from './sidebar';
+import { CommandPalette } from './command-palette';
 import { Button } from '@meetflow/ui';
 import { Menu, Search, Command } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export function AppShell({ children }: AppShellProps) {
   });
 
   const [mobileOpen, setMobileOpen] = React.useState<boolean>(false);
+  const [paletteOpen, setPaletteOpen] = React.useState<boolean>(false);
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
@@ -48,6 +50,9 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+      {/* Command Palette */}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+
       {/* 1. Collapsible Sidebar (Desktop & Mobile Drawer) */}
       <Sidebar
         collapsed={collapsed}
@@ -78,20 +83,21 @@ export function AppShell({ children }: AppShellProps) {
                 {getPageTitle(currentPath)}
               </span>
               <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                Phase 02
+                Phase 03
               </span>
             </div>
           </div>
 
-          {/* Quick Search / Command Palette Stub */}
+          {/* Quick Search / Command Palette Trigger */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="hidden sm:inline-flex items-center gap-2 rounded-md border border-input bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground shadow-2xs"
-              title="Command Palette (Shortcut)"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden sm:inline-flex items-center gap-2 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground shadow-2xs"
+              title="Command Palette (Ctrl+K or ⌘K)"
             >
               <Search className="h-3.5 w-3.5" />
-              <span>Search meetings or ask AI...</span>
+              <span>Search meetings or navigate...</span>
               <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[9px] font-medium opacity-80">
                 <Command className="h-2.5 w-2.5" /> K
               </kbd>
