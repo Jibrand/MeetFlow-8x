@@ -4,14 +4,14 @@
     "userPromptSubmitted": [
       {
         "type": "command",
-        "command": "node .github/hooks/record-copilot-event.cjs",
+        "command": "node .github/hooks/record-copilot-event.cjs --event userPromptSubmitted",
         "timeoutSec": 10
       }
     ],
     "agentStop": [
       {
         "type": "command",
-        "command": "node .github/hooks/record-copilot-event.cjs",
+        "command": "node .github/hooks/record-copilot-event.cjs --event agentStop",
         "timeoutSec": 10
       }
     ]

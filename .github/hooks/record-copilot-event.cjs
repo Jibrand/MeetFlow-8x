@@ -4,6 +4,11 @@ const path = require('node:path');
 const logsDirectory = path.resolve(__dirname, '..', '..', '.agent-logs');
 const fallbackSessionId = 'unknown-session';
 
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : null;
+}
+
 function firstString(...values) {
   return values.find((value) => typeof value === 'string' && value.length > 0) || null;
 }
@@ -31,8 +36,24 @@ function redact(value) {
     .replace(/\b(api[_-]?key|token|secret|password)\b(\s*[:=]\s*)["']?[^"',\s]+["']?/gi, '$1$2[REDACTED]');
 }
 
+function getNestedObject(event, ...keys) {
+  for (const key of keys) {
+    const value = event[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value;
+    }
+  }
+  return {};
+}
+
+function getContent(event, ...keys) {
+  const nested = getNestedObject(event, 'data', 'payload', 'context');
+  return firstString(...keys.flatMap((key) => [event[key], nested[key]]));
+}
+
 function getAttachmentMetadata(event) {
-  const attachments = event.attachments || event.attachment;
+  const nested = getNestedObject(event, 'data', 'payload', 'context');
+  const attachments = event.attachments || event.attachment || nested.attachments || nested.attachment;
   if (!Array.isArray(attachments)) {
     return undefined;
   }
@@ -56,29 +77,53 @@ function getAttachmentMetadata(event) {
 
 function main() {
   const event = readEvent();
-  const eventName = firstString(event.hookEventName, event.hook_event_name, event.eventName, event.event) || 'unknown';
+  const configuredEventName = argumentValue('--event');
+  const eventName =
+    configuredEventName ||
+    firstString(event.hookEventName, event.hook_event_name, event.eventName, event.event, event.type) ||
+    'hook_invoked';
+  const nested = getNestedObject(event, 'data', 'payload', 'context');
   const sessionId =
-    firstString(event.sessionId, event.session_id, event.conversationId, event.conversation_id) ||
+    firstString(
+      event.sessionId,
+      event.session_id,
+      event.conversationId,
+      event.conversation_id,
+      nested.sessionId,
+      nested.session_id,
+      nested.conversationId,
+      nested.conversation_id
+    ) ||
     fallbackSessionId;
-  const prompt = firstString(event.prompt, event.userPrompt, event.user_prompt);
-  const response = firstString(event.response, event.assistantResponse, event.assistant_response);
+  const prompt = getContent(event, 'prompt', 'userPrompt', 'user_prompt', 'message', 'content');
+  const response = getContent(event, 'response', 'assistantResponse', 'assistant_response', 'message', 'content');
   const timestamp =
-    firstString(event.timestamp, event.createdAt, event.created_at) || new Date().toISOString();
+    firstString(event.timestamp, event.createdAt, event.created_at, nested.timestamp, nested.createdAt) ||
+    new Date().toISOString();
   const isPromptEvent = eventName === 'userPromptSubmitted';
   const isStopEvent = eventName === 'agentStop';
+  const content = isPromptEvent ? prompt : isStopEvent ? response : null;
   const record = {
     capturedAt: new Date().toISOString(),
     timestamp,
     sessionId,
     event: eventName,
     role: isPromptEvent ? 'user' : isStopEvent ? 'assistant' : 'event',
-    content: isPromptEvent ? (prompt ? redact(prompt) : null) : response ? redact(response) : null,
+    content: content ? redact(content) : null,
+    contentAvailable: Boolean(content),
     attachments: getAttachmentMetadata(event),
     responseCapture: isStopEvent
       ? response
         ? 'captured_from_hook_payload'
         : 'unavailable_via_supported_hook'
       : 'not_applicable',
+    captureNote: content
+      ? 'content_supplied_by_hook_payload'
+      : isStopEvent
+        ? 'assistant_transcript_not_supplied_by_supported_hook'
+        : isPromptEvent
+          ? 'prompt_not_supplied_by_hook_payload'
+          : 'lifecycle_metadata_only',
   };
 
   fs.mkdirSync(logsDirectory, { recursive: true });

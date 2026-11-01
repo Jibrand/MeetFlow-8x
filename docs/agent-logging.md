@@ -9,7 +9,9 @@ preserved and must not be rewritten or removed.
 ## GitHub Copilot in VS Code
 
 The repository hook at [`.github/hooks/copilot-logging.json`](../.github/hooks/copilot-logging.json)
-uses the supported Copilot `userPromptSubmitted` and `agentStop` events. It
+uses the supported Copilot `userPromptSubmitted` and `agentStop` events. Each
+configured command passes its event name explicitly, so a missing or differently
+shaped payload cannot produce `event: "unknown"`. It
 records the event timestamp, session identifier, an explicit `role`, and
 prompt/response content only when that content is present in the hook payload.
 Attachment descriptors and attachment text are recorded only when the payload
@@ -18,7 +20,9 @@ actually includes them.
 This hook does **not** claim to capture complete conversations. In the current
 supported VS Code hook contract, `agentStop` does not provide the assistant's
 final response transcript, so it records
-`responseCapture: "unavailable_via_supported_hook"` and `content: null`.
+`responseCapture: "unavailable_via_supported_hook"`, `contentAvailable: false`,
+and an explicit `captureNote`. A null content field in such a record means the
+platform did not provide the message; it is not a fabricated response.
 Likewise, an attachment marker such as `#attachment:...` cannot be expanded
 unless the hook payload itself contains the attachment text. Git hooks do not
 receive Copilot chat messages and are not used for capture.
