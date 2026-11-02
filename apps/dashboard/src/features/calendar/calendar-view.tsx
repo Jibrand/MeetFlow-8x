@@ -21,6 +21,7 @@ import { MeetingItem } from '../../types/meeting';
 import { AddMeetingDialog } from '../meetings/add-meeting-dialog';
 
 export function CalendarView() {
+  const [createDate, setCreateDate] = React.useState<string | null>(null);
   const [viewMode, setViewMode] = React.useState<'month' | 'agenda'>('month');
 
   const [currentMonthDate, setCurrentMonthDate] = React.useState(
@@ -148,6 +149,14 @@ export function CalendarView() {
           </div>
 
           <AddMeetingDialog />
+          <AddMeetingDialog
+            hideTrigger
+            initialDate={createDate ?? undefined}
+            open={createDate !== null}
+            onOpenChange={(open) => {
+              if (!open) setCreateDate(null);
+            }}
+          />
         </div>
       </div>
 
@@ -261,7 +270,20 @@ export function CalendarView() {
                 return (
                   <div
                     key={dateKey}
-                    onClick={() => setSelectedDateStr(dateKey)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Create meeting on ${dateKey}`}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedDateStr(dateKey);
+                        setCreateDate(dateKey);
+                      }
+                    }}
+                    onClick={() => {
+                      setSelectedDateStr(dateKey);
+                      setCreateDate(dateKey);
+                    }}
                     className={`h-20 sm:h-24 rounded-lg border p-1.5 flex flex-col justify-between transition-all cursor-pointer ${
                       isSelected
                         ? 'border-primary ring-1 ring-primary bg-primary/5 shadow-xs'

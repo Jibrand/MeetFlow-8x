@@ -99,6 +99,23 @@ All client-facing endpoints are namespaced under the versioned prefix:
 
 ## 4. OpenAPI 3.1 Specification
 
+### Highlights, public sharing and summary types
+
+| Method | Path (under `/api/v1`) | Contract |
+| :--- | :--- | :--- |
+| GET / POST | `/meetings/:id/highlights` | Workspace-authorized list/create. Fields: label (required on create, max 255), quote (max 30,000), tag (max 100), nullable nonnegative startTime in seconds. Returns persisted UUIDs and hasTimestamp. |
+| PATCH / DELETE | `/meetings/:id/highlights/:highlightId` | Edit supplied fields or soft-delete. Deleted quotes are retained as tombstones so processing retries do not resurrect them. |
+| GET | `/meetings/:id/sharing` | Authenticated workspace sharing state and capability token. Never cache/share this management response publicly. |
+| POST | `/meetings/:id/sharing` | `{action, permissions?}`; action is enable, disable, regenerate, revoke or update. Permissions are allowSummary, allowHighlights, allowActions, allowTranscript booleans. Transcript defaults off. |
+| GET | `/public/meetings/:token` | Anonymous, rate-limited, read-only allowlisted DTO. Requires an enabled, unexpired 256-bit random capability. Invalid/revoked links return 404. No workspace IDs, member emails, private file URLs, recordings or private controls are exposed. |
+| GET / POST | `/meetings/:id/summaries/:type` | type: general, executive, engineering, product, sales or interview. GET reads persisted content/status. POST enqueues only missing/stale content; `{retry:true}` explicitly retries a failed generation. |
+
+Sharing is off until explicitly enabled. Disabling denies requests while retaining the link; enabling restores it. Regeneration atomically replaces the old capability; revoke removes it. Anyone holding an enabled link can read permitted content, so recipients can forward it. Public pages use no authentication requests or workspace shell, omit cookies on API reads, hide prior content if access is revoked, and refresh access every 30 seconds. Public responses use no-store/noindex and no-referrer headers. Deployment access logs should redact `/share/:token` and `/public/meetings/:token` capability paths; API diagnostic paths already do so. Tokens must never enter conversation logs or analytics.
+
+Summary variants reuse the existing BullMQ queue/worker and environment-configured OpenAI client. A unique `(meetingId,type)` row plus a generation identifier deduplicates concurrent requests. READY results are reused without an AI call; source-summary revision changes invalidate old variants. Generation uses saved structured meeting facts, not invented template placeholders. Provider work stays outside database transactions; completion is guarded against stale generations/source revisions. Failures are persisted, retry is explicit, and a five-minute stale queued/running state becomes a useful failure instead of an indefinite spinner. The General summary is the existing saved base summary and requires no additional generation.
+
+Apply the additive `20261102100000_meeting_collaboration` migration through `scripts/apply-feature-schema.ts`, then regenerate Prisma. It adds summary-variant storage, share permissions and highlight deletion tombstones, and materializes existing saved AI highlight quotes as editable rows. Unknown timestamps remain null. No database reset is needed. Private highlight changes are optimistic with rollback; public viewers always receive the database state.
+
 ### Meeting editing and deletion
 
 `PATCH /meetings/:id` accepts optional `participants` alongside title, description, startAt, endAt, timezone and meetingStatus. Omit participants to retain them; send an array to replace them atomically, or `[]` to clear them. Names are trimmed, limited to 100 characters, and case-insensitively unique; at most 200 participants are accepted. Each participant may include nullable email and role. Create uses the same validation. The dashboard exposes keyboard chips and real edit/delete dialogs; DELETE cascades meeting-owned records and removes its private recording. All operations remain workspace-authorized.

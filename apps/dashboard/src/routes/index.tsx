@@ -24,7 +24,6 @@ export function MeetingsPage() {
     } catch {}
     const params = new URLSearchParams(window.location.search);
     const status = params.get('status') || 'all';
-    const platform = params.get('platform') || 'all';
     const sort = params.get('sort') || 'newest';
     return {
       search: params.get('q') || '',
@@ -38,9 +37,7 @@ export function MeetingsPage() {
       ].includes(status)
         ? status
         : 'all') as MeetingFiltersState['status'],
-      platform: (['all', 'zoom', 'meet', 'teams', 'upload'].includes(platform)
-        ? platform
-        : 'all') as MeetingFiltersState['platform'],
+      platform: 'all',
       sort: (['newest', 'oldest', 'longest'].includes(sort)
         ? sort
         : 'newest') as MeetingFiltersState['sort'],

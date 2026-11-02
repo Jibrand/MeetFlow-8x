@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   Button,
   Input,
@@ -20,7 +21,7 @@ export interface HighlightDialogProps {
   meetingId: string;
   initialTimestamp: number;
   initialHighlight?: HighlightData | null;
-  onSave: (data: Omit<HighlightData, 'id'>) => void;
+  onSave: (data: Omit<HighlightData, 'id'>) => void | Promise<void>;
   onUpdate?: (id: string, updates: Partial<HighlightData>) => void;
 }
 
@@ -39,15 +40,19 @@ export function HighlightDialog({
   initialTimestamp,
   initialHighlight,
   onSave,
-  onUpdate,
 }: HighlightDialogProps) {
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [label, setLabel] = React.useState('');
   const [tag, setTag] = React.useState('Important');
   const [timestamp, setTimestamp] = React.useState(0);
+  const [timestampTouched, setTimestampTouched] = React.useState(false);
   const [quote, setQuote] = React.useState('');
 
   React.useEffect(() => {
     if (open) {
+      setError(null);
+      setTimestampTouched(false);
       if (initialHighlight) {
         setLabel(initialHighlight.label);
         setTag(initialHighlight.tag);
@@ -62,54 +67,72 @@ export function HighlightDialog({
     }
   }, [open, initialHighlight, initialTimestamp]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!label.trim()) {
       toast.error('Please enter a highlight label');
       return;
     }
 
-    if (initialHighlight && onUpdate) {
-      onUpdate(initialHighlight.id, {
-        label: label.trim(),
-        tag,
-        startTime: timestamp,
-        quote: quote.trim() || undefined,
-      });
-      toast.success('Highlight updated');
-    } else {
-      onSave({
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({
+        hasTimestamp:
+          initialHighlight?.hasTimestamp === false && !timestampTouched
+            ? false
+            : true,
         meetingId,
         label: label.trim(),
         tag,
         startTime: timestamp,
         quote: quote.trim() || undefined,
       });
-      toast.success('Highlight saved');
+      toast.success(initialHighlight ? 'Highlight updated' : 'Highlight saved');
+      onOpenChange(false);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'Could not save highlight.',
+      );
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!saving) onOpenChange(value);
+      }}
+    >
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <form aria-busy={saving} onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
                 <Bookmark className="h-4 w-4" />
               </div>
               <DialogTitle className="text-sm font-semibold">
-                {initialHighlight ? 'Edit Highlight' : 'Create Meeting Highlight'}
+                {initialHighlight
+                  ? 'Edit Highlight'
+                  : 'Create Meeting Highlight'}
               </DialogTitle>
             </div>
+            <DialogDescription>
+              Save the full content and timestamp for this meeting.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 text-xs">
+          <fieldset disabled={saving} className="space-y-3 text-xs">
             {/* Label input */}
             <div className="space-y-1">
-              <label className="font-medium text-foreground">Highlight Title / Label</label>
+              <label className="font-medium text-foreground">
+                Highlight Title / Label
+              </label>
               <Input
+                aria-label="Highlight title"
+                maxLength={255}
                 placeholder="e.g. Approved sub-second scrubbing"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -120,7 +143,9 @@ export function HighlightDialog({
 
             {/* Category selection */}
             <div className="space-y-1">
-              <label className="font-medium text-foreground">Category Tag</label>
+              <label className="font-medium text-foreground">
+                Category Tag
+              </label>
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {CATEGORIES.map((cat) => (
                   <button
@@ -142,7 +167,9 @@ export function HighlightDialog({
             {/* Timestamp input */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="font-medium text-foreground">Playback Timestamp</label>
+                <label className="font-medium text-foreground">
+                  Playback Timestamp
+                </label>
                 <span className="text-[11px] font-mono text-muted-foreground">
                   {formatSecondsToTime(timestamp)}
                 </span>
@@ -153,7 +180,12 @@ export function HighlightDialog({
                   type="number"
                   min={0}
                   value={timestamp}
-                  onChange={(e) => setTimestamp(parseInt(e.target.value) || 0)}
+                  aria-label="Highlight timestamp in seconds"
+                  max={10000000}
+                  onChange={(e) => {
+                    setTimestampTouched(true);
+                    setTimestamp(parseInt(e.target.value) || 0);
+                  }}
                   className="h-8 text-xs font-mono"
                 />
               </div>
@@ -161,28 +193,46 @@ export function HighlightDialog({
 
             {/* Quote / Context note */}
             <div className="space-y-1">
-              <label className="font-medium text-foreground">Notes / Quote (Optional)</label>
+              <label className="font-medium text-foreground">
+                Notes / Quote (Optional)
+              </label>
               <Textarea
+                aria-label="Highlight content"
+                maxLength={30000}
                 placeholder="Add context or quotes from the speaker..."
                 value={quote}
                 onChange={(e) => setQuote(e.target.value)}
                 className="text-xs min-h-[64px]"
               />
             </div>
-          </div>
-
+          </fieldset>
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
           <DialogFooter className="gap-2 sm:gap-0 pt-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              disabled={saving}
               onClick={() => onOpenChange(false)}
               className="h-8 text-xs"
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="h-8 text-xs">
-              {initialHighlight ? 'Save Changes' : 'Add Highlight'}
+            <Button
+              disabled={saving}
+              type="submit"
+              size="sm"
+              className="h-8 text-xs"
+            >
+              {saving
+                ? 'Saving…'
+                : initialHighlight
+                  ? 'Save Changes'
+                  : 'Add Highlight'}
             </Button>
           </DialogFooter>
         </form>

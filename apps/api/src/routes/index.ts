@@ -1,3 +1,4 @@
+import { publicMeetingsRouter } from '../modules/meetings/collaboration.routes';
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from '../modules/auth/auth.routes';
@@ -33,6 +34,7 @@ v1Router.get('/', (req, res) => {
   });
 });
 
+v1Router.use('/public/meetings', publicMeetingsRouter);
 v1Router.use('/auth', authRouter);
 v1Router.use('/users', usersRouter);
 v1Router.use('/workspaces', workspacesRouter);

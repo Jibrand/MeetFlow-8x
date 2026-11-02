@@ -755,6 +755,213 @@ paths:
           { description: Disconnected; imported meeting content is preserved. }
         '404': { description: No connection exists. }
 
+  /meetings/{id}/highlights:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      summary: List persisted meeting highlights
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          {
+            description: Active highlight UUIDs,
+            label,
+            quote,
+            tag,
+            startTime and hasTimestamp.,
+          }
+        '404': { description: Meeting unavailable in the current workspace. }
+    post:
+      summary: Create a persisted meeting highlight
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label]
+              properties:
+                label: { type: string, minLength: 1, maxLength: 255 }
+                quote: { type: string, maxLength: 30000 }
+                tag: { type: string, minLength: 1, maxLength: 100 }
+                startTime:
+                  { type: [number, 'null'], minimum: 0, maximum: 10000000 }
+      responses:
+        '201': { description: Persisted highlight. }
+
+  /meetings/{id}/highlights/{highlightId}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: highlightId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      summary: Update supplied highlight fields within the current workspace
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                label: { type: string, minLength: 1, maxLength: 255 }
+                quote: { type: string, maxLength: 30000 }
+                tag: { type: string, minLength: 1, maxLength: 100 }
+                startTime:
+                  { type: [number, 'null'], minimum: 0, maximum: 10000000 }
+      responses:
+        '200': { description: Updated persisted highlight. }
+        '404': { description: Highlight or workspace meeting not found. }
+    delete:
+      summary: Soft-delete a highlight, retaining its processing tombstone
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { description: Idempotent deleted outcome. }
+
+  /meetings/{id}/sharing:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      summary: Read workspace-authorized sharing management state
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          {
+            description: Null or capability token,
+            enabled flag and section permissions.,
+          }
+    post:
+      summary: Enable, disable, update, regenerate or revoke a public capability
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action:
+                  {
+                    type: string,
+                    enum: [enable, disable, regenerate, revoke, update],
+                  }
+                permissions:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    [
+                      allowSummary,
+                      allowHighlights,
+                      allowActions,
+                      allowTranscript,
+                    ]
+                  properties:
+                    allowSummary: { type: boolean, default: true }
+                    allowHighlights: { type: boolean, default: true }
+                    allowActions: { type: boolean, default: true }
+                    allowTranscript: { type: boolean, default: false }
+      responses:
+        '200':
+          {
+            description: Updated management state. Regenerate/revoke atomically invalidate old links.,
+          }
+
+  /public/meetings/{token}:
+    get:
+      summary: Read an anonymous shared meeting using an enabled capability
+      security: []
+      parameters:
+        - {
+            in: path,
+            name: token,
+            required: true,
+            schema: { type: string, pattern: '^[A-Za-z0-9_-]{43}$' },
+          }
+      responses:
+        '200':
+          {
+            description: Title/startAt and only permitted summary,
+            highlights,
+            actionItems and segments. Excludes workspace data,
+            private IDs,
+            member emails and media URLs. No-store/noindex headers.,
+          }
+        '404':
+          { description: Invalid, expired, disabled or revoked capability. }
+        '429': { description: Public read rate limit exceeded. }
+
+  /meetings/{id}/summaries/{type}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: type,
+          required: true,
+          schema:
+            {
+              type: string,
+              enum:
+                [general, executive, engineering, product, sales, interview],
+            },
+        }
+    get:
+      summary: Read a persisted summary type and generation state
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          {
+            description: status NOT_GENERATED/QUEUED/RUNNING/READY/FAILED,
+            content and safe error.,
+          }
+    post:
+      summary: Enqueue missing summary generation without duplicating existing work
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                retry: { type: boolean, default: false }
+      responses:
+        '200':
+          {
+            description: Cached READY content or persisted queue/failure state. General reuses the base summary.,
+          }
+        '409':
+          { description: Process this meeting before generating a summary. }
+
 components:
   securitySchemes:
     cookieAuth:

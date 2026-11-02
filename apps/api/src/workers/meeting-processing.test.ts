@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       createMany: vi.fn(),
     },
+    highlight: { findMany: vi.fn(), createMany: vi.fn() },
     meetingParticipant: { findMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -117,6 +118,7 @@ beforeEach(async () => {
   });
   mocks.db.actionItem.findMany.mockResolvedValue([]);
   mocks.db.meetingParticipant.findMany.mockResolvedValue([]);
+  mocks.db.highlight.findMany.mockResolvedValue([]);
   mocks.queue.getWorkers.mockResolvedValue([{}]);
   mocks.queue.isPaused.mockResolvedValue(false);
   mocks.analyze.mockResolvedValue({

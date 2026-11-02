@@ -56,7 +56,9 @@ export function createApp(): Express {
         message: 'HTTP Request',
         requestId: req.id,
         method: req.method,
-        path: req.path,
+        path: req.path.includes('/public/meetings/')
+          ? '/api/v1/public/meetings/[redacted]'
+          : req.path,
         statusCode: res.statusCode,
         durationMs: duration,
       });

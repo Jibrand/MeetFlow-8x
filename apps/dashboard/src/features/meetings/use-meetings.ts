@@ -67,6 +67,8 @@ export function useWorkspaceProcessingSync() {
         'meeting',
         'meetings',
         'meeting-pages',
+        'summary-variant',
+        'highlights',
       ])
         void client.invalidateQueries({ queryKey: [key, workspaceScope()] });
     }
@@ -84,6 +86,8 @@ export async function invalidateMeetingData(
       'meeting',
       'overview',
       'action-items',
+      'summary-variant',
+      'highlights',
     ].map((key) =>
       client.invalidateQueries({ queryKey: [key, workspaceScope()] }),
     ),

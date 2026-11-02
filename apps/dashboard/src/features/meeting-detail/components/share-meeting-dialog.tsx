@@ -1,127 +1,212 @@
 import * as React from 'react';
-import { MeetingItem } from '../../../types/meeting';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   Button,
   Input,
   Checkbox,
   toast,
 } from '@meetflow/ui';
-import { Share2, Copy, Check, Lock } from 'lucide-react';
-import { formatSecondsToTime } from '../lib/export-utils';
-
-export interface ShareMeetingDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  meeting: MeetingItem;
-  currentTimestamp: number;
+import type { MeetingItem } from '../../../types/meeting';
+import { apiClient } from '../../../lib/api-client';
+import { workspaceScope } from '../../meetings/use-meetings';
+interface Permissions {
+  allowSummary: boolean;
+  allowHighlights: boolean;
+  allowActions: boolean;
+  allowTranscript: boolean;
 }
-
+interface Sharing {
+  token: string;
+  enabled: boolean;
+  permissions: Permissions;
+}
+const defaults: Permissions = {
+  allowSummary: true,
+  allowHighlights: true,
+  allowActions: true,
+  allowTranscript: false,
+};
 export function ShareMeetingDialog({
   open,
   onOpenChange,
   meeting,
-  currentTimestamp,
-}: ShareMeetingDialogProps) {
-  const [includeTimestamp, setIncludeTimestamp] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
-
-  const roundedTs = Math.round(currentTimestamp);
-
-  const shareUrl = React.useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://meetflow.ai';
-    let url = `${origin}/meetings/${meeting.id}`;
-    if (includeTimestamp && roundedTs > 0) {
-      url += `?t=${roundedTs}`;
-    }
-    return url;
-  }, [meeting.id, includeTimestamp, roundedTs]);
-
-  const handleCopy = async () => {
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  meeting: MeetingItem;
+  currentTimestamp?: number;
+}) {
+  const client = useQueryClient();
+  const key = ['sharing', workspaceScope(), meeting.id];
+  const query = useQuery({
+    queryKey: key,
+    enabled: open,
+    queryFn: () => apiClient<Sharing | null>(`/meetings/${meeting.id}/sharing`),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [permissions, setPermissions] = React.useState(defaults);
+  React.useEffect(() => {
+    if (query.data) setPermissions(query.data.permissions);
+  }, [query.data]);
+  const act = async (action: string) => {
+    setPending(true);
+    setError(null);
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      toast.success('Workspace link copied to clipboard');
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error('Failed to copy to clipboard');
+      const result = await apiClient<Sharing | null>(
+        `/meetings/${meeting.id}/sharing`,
+        { method: 'POST', body: JSON.stringify({ action, permissions }) },
+      );
+      client.setQueryData(key, result);
+      toast.success(
+        action === 'revoke' ? 'Share link revoked' : 'Sharing updated',
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'Could not update sharing.',
+      );
+    } finally {
+      setPending(false);
     }
   };
-
+  const url = query.data
+    ? `${window.location.origin}/share/${query.data.token}`
+    : '';
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!pending) onOpenChange(value);
+      }}
+    >
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <Share2 className="h-4 w-4" />
-            </div>
-            <DialogTitle className="text-sm font-semibold">Share Meeting</DialogTitle>
-          </div>
+          <DialogTitle>Share meeting</DialogTitle>
+          <DialogDescription>
+            Anyone with an enabled link can read only the sections you allow.
+            Transcript sharing is off by default.
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4 text-xs">
-          {/* Workspace Privacy Notice */}
-          <div className="rounded-lg border border-border/70 bg-muted/30 p-3 space-y-1.5">
-            <div className="flex items-center gap-1.5 font-medium text-foreground">
-              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-              <span>Workspace Member Access</span>
-            </div>
-            <p className="text-muted-foreground leading-relaxed">
-              Workspace members can open this link after signing in to view the recording, transcript, and AI summary.
+        {query.isPending ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading sharing…
+          </p>
+        ) : query.isError ? (
+          <div role="alert">
+            <p>{query.error.message}</p>
+            <Button onClick={() => void query.refetch()}>Retry</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Public access is {query.data?.enabled ? 'enabled' : 'disabled'}.
+              Regenerating or revoking invalidates the previous link.
             </p>
-          </div>
-
-          {/* Link box */}
-          <div className="space-y-1.5">
-            <label className="font-medium text-foreground">Meeting Link</label>
-            <div className="flex items-center gap-2">
-              <Input
-                readOnly
-                value={shareUrl}
-                className="h-8 text-xs font-mono bg-card"
-                onFocus={(e) => e.target.select()}
-              />
+            <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2">
+              <legend className="mb-2 text-xs font-medium">
+                Visible sections
+              </legend>
+              {Object.entries({
+                allowSummary: 'AI summary',
+                allowHighlights: 'Highlights',
+                allowActions: 'Action items',
+                allowTranscript: 'Transcript',
+              }).map(([name, label]) => (
+                <label key={name} className="flex items-center gap-2 text-xs">
+                  <Checkbox
+                    checked={permissions[name as keyof Permissions]}
+                    onCheckedChange={(value) =>
+                      setPermissions((old) => ({
+                        ...old,
+                        [name]: Boolean(value),
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+            {url && (
+              <div className="flex gap-2">
+                <Input
+                  aria-label="Public share link"
+                  readOnly
+                  value={url}
+                  onFocus={(event) => event.target.select()}
+                />
+                <Button
+                  disabled={pending || !query.data?.enabled}
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(url)
+                      .then(() => toast.success('Public link copied'))
+                      .catch(() => toast.error('Could not copy link.'));
+                  }}
+                >
+                  Copy link
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
               <Button
-                size="sm"
-                onClick={handleCopy}
-                className="h-8 px-3 text-xs gap-1.5 shrink-0"
+                disabled={pending}
+                onClick={() =>
+                  void act(query.data?.enabled ? 'disable' : 'enable')
+                }
               >
-                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
+                {pending
+                  ? 'Updating…'
+                  : query.data?.enabled
+                    ? 'Disable sharing'
+                    : 'Enable sharing'}
               </Button>
+              {query.data && (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => void act('update')}
+                  >
+                    Save permissions
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => void act('regenerate')}
+                  >
+                    Regenerate link
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={pending}
+                    onClick={() => void act('revoke')}
+                  >
+                    Revoke link
+                  </Button>
+                </>
+              )}
             </div>
           </div>
-
-          {/* Timestamp checkbox */}
-          {roundedTs > 0 && (
-            <div className="flex items-center gap-2 pt-1">
-              <Checkbox
-                id="include-timestamp"
-                checked={includeTimestamp}
-                onCheckedChange={(val) => setIncludeTimestamp(Boolean(val))}
-              />
-              <label
-                htmlFor="include-timestamp"
-                className="text-xs text-foreground cursor-pointer select-none"
-              >
-                Start playback at current time ({formatSecondsToTime(roundedTs)})
-              </label>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="pt-2">
+        )}
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+        <DialogFooter>
           <Button
-            type="button"
             variant="outline"
-            size="sm"
+            disabled={pending}
             onClick={() => onOpenChange(false)}
-            className="h-8 text-xs"
           >
             Done
           </Button>

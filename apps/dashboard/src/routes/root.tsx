@@ -168,10 +168,16 @@ function RootComponent() {
   }, []);
 
   const isAuthenticated = currentUser !== null;
+  const isPublicPage = pathname.startsWith('/share/');
+  React.useEffect(() => {
+    if (!isPublicPage && !authAdapter.isInitialized())
+      void authAdapter.syncSessionWithServer();
+  }, [isPublicPage]);
   const isAuthPage = AUTH_PAGES.includes(pathname);
   const isOnboardingPage = pathname === '/onboarding';
 
   React.useEffect(() => {
+    if (isPublicPage) return;
     // While initial session bootstrap is running, do not prematurely redirect away from current page
     if (!isInitialized && !isAuthPage) {
       return;
@@ -207,6 +213,7 @@ function RootComponent() {
       return;
     }
   }, [
+    isPublicPage,
     isAuthenticated,
     isAuthPage,
     isOnboardingPage,
@@ -241,6 +248,7 @@ function RootComponent() {
     </div>
   );
 
+  if (isPublicPage) return <Outlet />;
   // 1. If visiting an auth page (/login, /register, /forgot-password)
   if (isAuthPage) {
     if (isInitialized && isAuthenticated) {

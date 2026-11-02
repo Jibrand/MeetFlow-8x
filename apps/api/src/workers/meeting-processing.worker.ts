@@ -1,4 +1,5 @@
 import '../env';
+import { generateSummaryVariant } from '../services/summary-variants';
 import { processingTransaction } from '../services/processing-transaction';
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { createRedisConnection, isRedisConfigured } from '../lib/redis';
@@ -243,6 +244,34 @@ export async function processMeetingIntelligence(
         data: [...people.values()].map((person) => ({ meetingId, ...person })),
       });
 
+    const savedHighlights = await tx.highlight.findMany({
+      where: { meetingId },
+      select: { quote: true },
+    });
+    const savedQuotes = new Set(
+      savedHighlights.map((h) => h.quote.trim().toLowerCase()),
+    );
+    const newHighlights = aiResult.highlights.filter((h) => {
+      const key = h.quote.trim().toLowerCase();
+      if (!key || savedQuotes.has(key)) return false;
+      savedQuotes.add(key);
+      return true;
+    });
+    if (newHighlights.length)
+      await tx.highlight.createMany({
+        data: newHighlights.map((h) => {
+          const segment = parseResult.segments.find((s) =>
+            s.text.includes(h.quote),
+          );
+          return {
+            meetingId,
+            quote: h.quote,
+            note: h.label,
+            tags: [h.tag],
+            startTime: segment?.startMs != null ? segment.startMs / 1000 : null,
+          };
+        }),
+      });
     // 3. Mark Meeting READY
     await tx.meeting.update({
       where: { id: meetingId },
@@ -342,7 +371,27 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
   const worker = new Worker<MeetingJobPayload>(
     MEETING_PROCESSING_QUEUE_NAME,
     async (job: Job<MeetingJobPayload>) => {
-      const { meetingId } = job.data;
+      const { meetingId, summaryVariantId, generationId } = job.data;
+      if (summaryVariantId && generationId) {
+        try {
+          await generateSummaryVariant(summaryVariantId, generationId);
+        } catch (error) {
+          if (job.attemptsMade >= (job.opts.attempts || 1) - 1)
+            await prisma.meetingSummaryVariant.updateMany({
+              where: {
+                id: summaryVariantId,
+                generationId,
+                status: { in: ['QUEUED', 'RUNNING'] },
+              },
+              data: {
+                status: 'FAILED',
+                error: 'Summary could not be generated. Please retry.',
+              },
+            });
+          throw error;
+        }
+        return;
+      }
       logger.info(`[Worker] Processing job ${job.id} for meeting ${meetingId}`);
 
       try {

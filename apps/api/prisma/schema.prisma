@@ -208,6 +208,7 @@ model Meeting {
   processingJobs   MeetingProcessingJob[]
   highlights       Highlight[]
   shareLinks       ShareLink[]
+  summaryVariants  MeetingSummaryVariant[]
 
   @@index([workspaceId])
   @@unique([calendarConnectionId, externalEventId])
@@ -349,6 +350,7 @@ model Highlight {
   note      String?  @db.Text
   tags      String[] @default([])
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@index([meetingId])
   @@map("highlights")
@@ -360,10 +362,31 @@ model ShareLink {
   meeting    Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   token      String    @unique
   isPublic   Boolean   @default(true)
+  allowSummary Boolean @default(true)
+  allowHighlights Boolean @default(true)
+  allowActions Boolean @default(true)
+  allowTranscript Boolean @default(false)
   allowClips Boolean   @default(true)
   expiresAt  DateTime?
   createdAt  DateTime  @default(now())
 
   @@index([token])
   @@map("share_links")
+}
+
+model MeetingSummaryVariant {
+  id String @id @default(uuid())
+  meetingId String
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  type String
+  sourceVersion String
+  generationId String
+  status String @default("QUEUED")
+  content Json?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([meetingId, type])
+  @@index([status])
+  @@map("meeting_summary_variants")
 }

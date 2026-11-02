@@ -1,4 +1,5 @@
 import { createRouter, createRoute } from '@tanstack/react-router';
+import { publicMeetingRoute } from './routes/public-meeting';
 import { rootRoute } from './routes/root';
 import { indexRoute, MeetingsPage } from './routes/index';
 import { overviewRoute } from './routes/overview';
@@ -21,6 +22,7 @@ const meetingsRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  publicMeetingRoute,
   indexRoute,
   overviewRoute,
   meetingsRoute,
@@ -46,4 +48,3 @@ declare module '@tanstack/react-router' {
     router: typeof router;
   }
 }
-

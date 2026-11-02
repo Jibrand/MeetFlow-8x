@@ -7,6 +7,8 @@ import { markProcessingFailed } from '../services/processing-state';
 
 export const MEETING_PROCESSING_QUEUE_NAME = 'meeting-processing';
 export interface MeetingJobPayload {
+  summaryVariantId?: string;
+  generationId?: string;
   meetingId: string;
   workspaceId: string;
 }

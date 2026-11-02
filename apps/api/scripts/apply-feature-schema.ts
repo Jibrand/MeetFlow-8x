@@ -7,6 +7,7 @@ try {
   for (const file of [
     'prisma/migrations/20261102013000_media_calendar/migration.sql',
     'prisma/migrations/20261102083000_meeting_page_index/migration.sql',
+    'prisma/migrations/20261102100000_meeting_collaboration/migration.sql',
   ]) {
     const output = execFileSync(
       process.execPath,

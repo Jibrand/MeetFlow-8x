@@ -34,7 +34,6 @@ export function MeetingFilters({
   const hasActiveFilters =
     filters.search.trim() !== '' ||
     filters.status !== 'all' ||
-    filters.platform !== 'all' ||
     filters.sort !== 'newest';
 
   const resetFilters = () => {
@@ -92,25 +91,6 @@ export function MeetingFilters({
             <option value="scheduled">Scheduled</option>
             <option value="failed">Failed</option>
             <option value="cancelled">Cancelled</option>
-          </select>
-
-          {/* Platform Filter */}
-          <select
-            value={filters.platform}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                platform: e.target.value as MeetingFiltersState['platform'],
-              })
-            }
-            aria-label="Filter by Platform"
-            className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="all">All Platforms</option>
-            <option value="meet">Google Meet</option>
-            <option value="zoom">Zoom</option>
-            <option value="teams">Microsoft Teams</option>
-            <option value="upload">Uploaded File</option>
           </select>
 
           {/* Sort Filter */}

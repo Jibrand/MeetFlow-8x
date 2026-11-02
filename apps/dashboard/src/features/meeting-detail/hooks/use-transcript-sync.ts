@@ -2,6 +2,25 @@ import * as React from 'react';
 import { TranscriptTurnItem } from '../../../types/meeting';
 import { findActiveTurnIndex } from '../lib/transcript-utils';
 
+export function scrollTranscriptToTurn(
+  container: HTMLDivElement | null,
+  id: string,
+) {
+  const element = document.getElementById('turn-' + id);
+  if (!container || !element || !container.contains(element)) return;
+  const bounds = container.getBoundingClientRect();
+  const target = element.getBoundingClientRect();
+  container.scrollTo({
+    top:
+      container.scrollTop +
+      target.top -
+      bounds.top -
+      (container.clientHeight - target.height) / 2,
+    behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth',
+  });
+}
 export interface UseTranscriptSyncOptions {
   turns: TranscriptTurnItem[];
   currentTime: number;
@@ -49,16 +68,21 @@ export function useTranscriptSync({
 
   // Auto-scroll the active turn into viewport if autoFollow is enabled and user hasn't scrolled recently
   React.useEffect(() => {
-    if (!autoFollow || userInteracted || activeTurnIndex < 0 || !isPlaying) return;
+    if (!autoFollow || userInteracted || activeTurnIndex < 0 || !isPlaying)
+      return;
 
-    const el = document.getElementById(`turn-${turns[activeTurnIndex]?.id}`);
-    if (el && containerRef?.current) {
-      el.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-    }
-  }, [activeTurnIndex, autoFollow, userInteracted, isPlaying, turns, containerRef]);
+    scrollTranscriptToTurn(
+      containerRef?.current ?? null,
+      turns[activeTurnIndex]?.id ?? '',
+    );
+  }, [
+    activeTurnIndex,
+    autoFollow,
+    userInteracted,
+    isPlaying,
+    turns,
+    containerRef,
+  ]);
 
   const toggleAutoFollow = React.useCallback(() => {
     setAutoFollow((prev) => !prev);

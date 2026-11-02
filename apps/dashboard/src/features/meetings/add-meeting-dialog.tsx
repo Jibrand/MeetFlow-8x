@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ParticipantChips, type ParticipantInput } from './participant-chips';
 import { useQueryClient } from '@tanstack/react-query';
 import { insertCreatedMeeting, invalidateMeetingData } from './use-meetings';
 import {
@@ -33,11 +34,29 @@ const MAX_TRANSCRIPT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface AddMeetingDialogProps {
   onMeetingCreated?: () => void;
+  initialDate?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
-export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
+export function AddMeetingDialog({
+  onMeetingCreated,
+  initialDate,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: AddMeetingDialogProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (value: boolean) => {
+    setInternalOpen(value);
+    onOpenChange?.(value);
+  };
+  const [participants, setParticipants] = React.useState<ParticipantInput[]>(
+    [],
+  );
   const [activeTab, setActiveTab] = React.useState<'transcript' | 'recording'>(
     'transcript',
   );
@@ -49,6 +68,10 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
+  React.useEffect(() => {
+    if (open && initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate))
+      setDateStr(initialDate);
+  }, [open, initialDate]);
   const [startTime, setStartTime] = React.useState('10:00');
   const [endTime, setEndTime] = React.useState('10:45');
   const [timezone] = React.useState(
@@ -71,6 +94,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const resetForm = React.useCallback(() => {
+    setParticipants([]);
     setTitle('');
     setDescription('');
     setMediaFile(null);
@@ -176,6 +200,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
         startAt: startDateTime.toISOString(),
         endAt: endDateTime ? endDateTime.toISOString() : undefined,
         timezone,
+        participants,
         meetingStatus,
         sourceType: transcriptContent
           ? ('TRANSCRIPT_UPLOAD' as const)
@@ -226,14 +251,16 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
 
   return (
     <>
-      <Button
-        size="sm"
-        onClick={() => setOpen(true)}
-        className="gap-1.5 h-8 text-xs font-semibold shadow-xs bg-amber-600 hover:bg-amber-700 text-white"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        <span>Add Meeting</span>
-      </Button>
+      {!hideTrigger && (
+        <Button
+          size="sm"
+          onClick={() => setOpen(true)}
+          className="gap-1.5 h-8 text-xs font-semibold shadow-xs bg-amber-600 hover:bg-amber-700 text-white"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span>Add Meeting</span>
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
@@ -409,6 +436,21 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                   )}
                 </div>
 
+                <div className="space-y-1">
+                  <label
+                    htmlFor="participants-optional"
+                    className="text-xs font-medium"
+                  >
+                    Participants (Optional)
+                  </label>
+                  <ParticipantChips
+                    id="participants-optional"
+                    value={participants}
+                    onChange={setParticipants}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
                 <DialogFooter className="pt-2">
                   <Button
                     type="button"
@@ -500,6 +542,21 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                     analyzed for summaries, decisions, and action items. Your
                     recording stays private to this workspace.
                   </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label
+                    htmlFor="participants-optional"
+                    className="text-xs font-medium"
+                  >
+                    Participants (Optional)
+                  </label>
+                  <ParticipantChips
+                    id="participants-optional"
+                    value={participants}
+                    onChange={setParticipants}
+                    disabled={isSubmitting}
+                  />
                 </div>
 
                 <DialogFooter>

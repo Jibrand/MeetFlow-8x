@@ -35,7 +35,10 @@ class AuthAdapter {
     // Never trust client storage before backend verification; start strictly unauthenticated
     this.currentUser = null;
     // Verify session asynchronously with server
-    if (typeof window !== 'undefined') {
+    if (
+      typeof window !== 'undefined' &&
+      !window.location.pathname.startsWith('/share/')
+    ) {
       this.syncSessionWithServer();
     }
   }
@@ -74,9 +77,26 @@ class AuthAdapter {
     this.syncPromise = (async () => {
       try {
         const data = await apiClient<{
-          user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
-          workspace: { id: string; name: string; slug: string; role: string; organizationName?: string | null };
-          onboarding: { completed: boolean; currentStep: number; professionalRole?: string; primaryUseCases?: string[] };
+          user: {
+            id: string;
+            name: string;
+            email: string;
+            avatarUrl: string | null;
+            role: string;
+          };
+          workspace: {
+            id: string;
+            name: string;
+            slug: string;
+            role: string;
+            organizationName?: string | null;
+          };
+          onboarding: {
+            completed: boolean;
+            currentStep: number;
+            professionalRole?: string;
+            primaryUseCases?: string[];
+          };
         }>('/auth/me');
 
         if (currentEpoch !== this.epoch) {
@@ -113,12 +133,16 @@ class AuthAdapter {
 
         if (
           err instanceof ApiError &&
-          (err.status === 0 || err.code === 'API_UNAVAILABLE' || err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')
+          (err.status === 0 ||
+            err.code === 'API_UNAVAILABLE' ||
+            err.code === 'NETWORK_ERROR' ||
+            err.code === 'TIMEOUT')
         ) {
           // Backend offline / connection refused
           this.currentUser = null;
           this.apiAvailable = false;
-          this.apiError = 'Cannot connect to MeetFlow API server at http://localhost:4000. Backend is offline.';
+          this.apiError =
+            'Cannot connect to MeetFlow API server at http://localhost:4000. Backend is offline.';
           this.notify();
           return null;
         }
@@ -145,14 +169,26 @@ class AuthAdapter {
 
   async login(
     email: string,
-    password?: string
+    password?: string,
   ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
     try {
       ++this.epoch;
       resetSessionInvalidState();
       const data = await apiClient<{
-        user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
-        workspace: { id: string; name: string; slug: string; role: string; organizationName?: string | null };
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          avatarUrl: string | null;
+          role: string;
+        };
+        workspace: {
+          id: string;
+          name: string;
+          slug: string;
+          role: string;
+          organizationName?: string | null;
+        };
         onboarding: { completed: boolean; currentStep: number };
       }>('/auth/login', {
         method: 'POST',
@@ -181,17 +217,22 @@ class AuthAdapter {
       this.setUser(user);
       return { success: true, user };
     } catch (err: any) {
-      if (err instanceof ApiError && (err.status === 0 || err.code === 'API_UNAVAILABLE')) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 0 || err.code === 'API_UNAVAILABLE')
+      ) {
         this.apiAvailable = false;
         this.apiError = err.message;
         return {
           success: false,
-          error: 'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
+          error:
+            'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
         };
       }
       return {
         success: false,
-        error: err instanceof ApiError ? err.message : 'Invalid email or password.',
+        error:
+          err instanceof ApiError ? err.message : 'Invalid email or password.',
       };
     }
   }
@@ -200,13 +241,19 @@ class AuthAdapter {
     name: string,
     email: string,
     password?: string,
-    workspaceName?: string
+    workspaceName?: string,
   ): Promise<{ success: boolean; error?: string; user?: AuthUser }> {
     try {
       ++this.epoch;
       resetSessionInvalidState();
       const data = await apiClient<{
-        user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          avatarUrl: string | null;
+          role: string;
+        };
         workspace: { id: string; name: string; slug: string; role: string };
         onboarding: { completed: boolean; currentStep: number };
       }>('/auth/register', {
@@ -235,12 +282,16 @@ class AuthAdapter {
       this.setUser(user);
       return { success: true, user };
     } catch (err: any) {
-      if (err instanceof ApiError && (err.status === 0 || err.code === 'API_UNAVAILABLE')) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 0 || err.code === 'API_UNAVAILABLE')
+      ) {
         this.apiAvailable = false;
         this.apiError = err.message;
         return {
           success: false,
-          error: 'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
+          error:
+            'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
         };
       }
       return {

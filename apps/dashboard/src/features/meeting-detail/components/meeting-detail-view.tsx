@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useHighlights, useSummaryVariant } from '../use-collaboration';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToggleActionItem } from '../../actions/use-toggle-action-item';
 import { meetingKey, invalidateMeetingData } from '../../meetings/use-meetings';
@@ -15,13 +16,6 @@ import {
 import { getMeetingSummaryTemplates } from '../lib/summary-templates';
 import { toast } from '@meetflow/ui';
 import { useMediaPlayer } from '../hooks/use-media-player';
-import {
-  getMeetingHighlights,
-  addMeetingHighlight,
-  updateMeetingHighlight,
-  deleteMeetingHighlight,
-  subscribeToHighlights,
-} from '../lib/highlights-store';
 import {
   getMeetingClips,
   saveMeetingClip,
@@ -64,6 +58,10 @@ export function MeetingDetailView({
 }: MeetingDetailViewProps) {
   const client = useQueryClient();
   const taskToggle = useToggleActionItem();
+  const [transcriptSeek, setTranscriptSeek] = React.useState<{
+    time: number;
+    request: number;
+  } | null>(null);
   // 1. Templates
   const allTemplates = React.useMemo(
     () => getMeetingSummaryTemplates(meeting),
@@ -78,15 +76,25 @@ export function MeetingDetailView({
     description: 'Standard meeting synthesis',
     sections: [],
   };
-  const currentTemplate =
-    allTemplates[selectedTemplateId] ||
-    allTemplates['general'] ||
-    defaultTemplate;
-
   // 2. Active Main Tab: summary | transcript | ask
   const [activeTab, setActiveTab] = React.useState<
     'summary' | 'transcript' | 'ask'
   >('summary');
+
+  const summaryVariant = useSummaryVariant(
+    meeting.id,
+    selectedTemplateId,
+    activeTab === 'summary',
+  );
+  const currentTemplate =
+    selectedTemplateId === 'general'
+      ? allTemplates.general || defaultTemplate
+      : summaryVariant.data?.content || {
+          ...defaultTemplate,
+          templateId: selectedTemplateId,
+          label: allTemplates[selectedTemplateId]?.label || 'Summary',
+          description: 'AI summary for this meeting',
+        };
 
   // 3. Media Player (only actively initialized if media source exists)
   const player = useMediaPlayer({
@@ -144,18 +152,8 @@ export function MeetingDetailView({
     void invalidateMeetingData(client);
   };
 
-  // 5. Highlights Store Subscription
-  const [highlights, setHighlights] = React.useState<HighlightData[]>(() =>
-    getMeetingHighlights(meeting.id, meeting.highlights ?? []),
-  );
-
-  React.useEffect(() => {
-    const sync = () =>
-      setHighlights(getMeetingHighlights(meeting.id, meeting.highlights ?? []));
-    sync();
-    return subscribeToHighlights(sync);
-  }, [meeting.id, meeting.highlights]);
-
+  const highlightQuery = useHighlights(meeting.id);
+  const highlights = highlightQuery.data ?? [];
   // 6. Clips Store Subscription
   const [clips, setClips] = React.useState<MeetingClip[]>(() =>
     getMeetingClips(meeting.id),
@@ -208,6 +206,7 @@ export function MeetingDetailView({
   const handleSeekAndSwitchToTranscript = (seconds: number) => {
     player.seek(seconds);
     setActiveTab('transcript');
+    setTranscriptSeek({ time: seconds, request: Date.now() });
   };
 
   const handleOpenHighlightAtTime = (_time?: number) => {
@@ -217,13 +216,15 @@ export function MeetingDetailView({
 
   const handleAddHighlightAtTurn = (turn: TranscriptTurnItem) => {
     setEditingHighlight(null);
-    addMeetingHighlight({
-      meetingId: meeting.id,
-      label: `Highlight by ${turn.speakerName}`,
-      tag: 'Important',
-      startTime: turn.startTime,
-      quote: turn.text,
-    });
+    void highlightQuery
+      .save({
+        meetingId: meeting.id,
+        label: `Highlight by ${turn.speakerName}`,
+        tag: 'Important',
+        startTime: turn.startTime,
+        quote: turn.text,
+      })
+      .catch((error: Error) => toast.error(error.message));
   };
 
   const handleToggleActionItem = taskToggle.toggle;
@@ -341,6 +342,25 @@ export function MeetingDetailView({
               {activeTab === 'summary' && (
                 <SummaryPanel
                   template={currentTemplate}
+                  loading={
+                    selectedTemplateId !== 'general' &&
+                    (summaryVariant.isPending ||
+                      ['QUEUED', 'RUNNING'].includes(
+                        summaryVariant.data?.status ?? '',
+                      ))
+                  }
+                  error={
+                    selectedTemplateId !== 'general'
+                      ? summaryVariant.error?.message ||
+                        summaryVariant.data?.error ||
+                        undefined
+                      : undefined
+                  }
+                  onRetry={() => {
+                    void summaryVariant
+                      .retry()
+                      .catch((error: Error) => toast.error(error.message));
+                  }}
                   currentTemplateId={selectedTemplateId}
                   onSelectTemplate={setSelectedTemplateId}
                   onSeek={handleSeekAndSwitchToTranscript}
@@ -349,9 +369,15 @@ export function MeetingDetailView({
 
               {activeTab === 'transcript' && (
                 <TranscriptPanel
+                  seekRequest={transcriptSeek}
+                  canFollow={Boolean(meeting.recordingUrl)}
                   turns={meeting.transcriptTurns ?? []}
                   isPlaying={player.isPlaying}
-                  currentTime={player.currentTime}
+                  currentTime={
+                    meeting.recordingUrl
+                      ? player.currentTime
+                      : (transcriptSeek?.time ?? 0)
+                  }
                   onSeek={handleSeek}
                   onAddHighlightAtTurn={handleAddHighlightAtTurn}
                 />
@@ -369,6 +395,21 @@ export function MeetingDetailView({
 
         {/* Right Column (Approx 35%) */}
         <div className="lg:col-span-4 space-y-5">
+          {/* Highlights & Moments Panel */}
+          <HighlightsPanel
+            highlights={highlights}
+            onSeek={handleSeekAndSwitchToTranscript}
+            onEdit={(hl) => {
+              setEditingHighlight(hl);
+              setHighlightDialogOpen(true);
+            }}
+            onDelete={highlightQuery.remove}
+            turns={meeting.transcriptTurns ?? []}
+            loading={highlightQuery.isPending}
+            error={highlightQuery.error?.message}
+            onRetry={() => void highlightQuery.refetch()}
+            onOpenCreate={() => handleOpenHighlightAtTime(player.currentTime)}
+          />
           {/* Action Items Panel */}
           <ActionItemsPanel
             items={actionItems}
@@ -384,18 +425,6 @@ export function MeetingDetailView({
               setEditingActionItem(null);
               setActionDialogOpen(true);
             }}
-          />
-
-          {/* Highlights & Moments Panel */}
-          <HighlightsPanel
-            highlights={highlights}
-            onSeek={handleSeek}
-            onEdit={(hl) => {
-              setEditingHighlight(hl);
-              setHighlightDialogOpen(true);
-            }}
-            onDelete={(id) => deleteMeetingHighlight(id)}
-            onOpenCreate={() => handleOpenHighlightAtTime(player.currentTime)}
           />
         </div>
       </div>
@@ -429,19 +458,8 @@ export function MeetingDetailView({
         meetingId={meeting.id}
         initialTimestamp={player.currentTime}
         initialHighlight={editingHighlight}
-        onUpdate={updateMeetingHighlight}
-        onSave={(data) => {
-          if (editingHighlight) {
-            updateMeetingHighlight(editingHighlight.id, data);
-          } else {
-            addMeetingHighlight({
-              meetingId: meeting.id,
-              label: data.label,
-              tag: data.tag,
-              startTime: data.startTime,
-              quote: data.quote,
-            });
-          }
+        onSave={async (data) => {
+          await highlightQuery.save(data, editingHighlight?.id);
         }}
       />
 

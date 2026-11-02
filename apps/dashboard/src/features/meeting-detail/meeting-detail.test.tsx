@@ -1,5 +1,7 @@
+import { apiClient } from '../../lib/api-client';
+import type { HighlightData } from '../../types/meeting';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithQuery as render } from '../../test-utils';
 import { MeetingDetailScaffold } from './meeting-detail-scaffold';
 import { SEEDED_MEETINGS } from '../../data/seeded-meetings';
@@ -7,6 +9,10 @@ vi.mock('./hooks/use-processing-poll', () => ({
   useProcessingPoll: () => ({ stage: 'QUEUED', progress: 5, error: null }),
 }));
 
+vi.mock('../../lib/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api-client')>()),
+  apiClient: vi.fn(),
+}));
 // Mock TanStack Router
 vi.mock('@tanstack/react-router', () => {
   const React = require('react');
@@ -24,6 +30,18 @@ vi.mock('@tanstack/react-router', () => {
 describe('MeetingDetailScaffold', () => {
   beforeEach(() => {
     localStorage.clear();
+    let saved: HighlightData[] = [];
+    vi.mocked(apiClient).mockImplementation(
+      async <T,>(endpoint: string, options: RequestInit = {}): Promise<T> => {
+        if (endpoint.endsWith('/highlights') && options.method === 'POST') {
+          const input = JSON.parse(String(options.body));
+          const item = { ...input, id: 'saved-highlight' };
+          saved = [...saved, item];
+          return item as T;
+        }
+        return saved as T;
+      },
+    );
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   });
 
@@ -113,7 +131,7 @@ describe('MeetingDetailScaffold', () => {
     expect(screen.getByText(/1 of 1/i)).toBeDefined();
   });
 
-  it('allows creating a new highlight moment', () => {
+  it('allows creating a new highlight moment', async () => {
     const verifiedMeeting = SEEDED_MEETINGS.find((m) => m.id === 'meet-08')!;
     render(
       <MeetingDetailScaffold
@@ -136,7 +154,17 @@ describe('MeetingDetailScaffold', () => {
     const submitBtn = screen.getByRole('button', { name: 'Add Highlight' });
     fireEvent.click(submitBtn);
 
-    expect(screen.getByText('Critical Architecture Decision')).toBeDefined();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', {
+          name: 'Open highlight: Critical Architecture Decision',
+        }),
+      ).toBeDefined(),
+    );
+    expect(apiClient).toHaveBeenCalledWith(
+      expect.stringContaining('/highlights'),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('renders scheduled call state with scheduling notice', () => {

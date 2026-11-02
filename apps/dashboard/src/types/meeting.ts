@@ -1,6 +1,7 @@
 export type MeetingPlatform = 'zoom' | 'meet' | 'teams' | 'upload';
 
-export type MeetingStatus = 'ready' | 'processing' | 'scheduled' | 'failed' | 'cancelled';
+export type MeetingStatus =
+  'ready' | 'processing' | 'scheduled' | 'failed' | 'cancelled';
 
 export interface Participant {
   id: string;
@@ -32,21 +33,23 @@ export interface ActionItemData {
 }
 
 export interface HighlightData {
+  hasTimestamp?: boolean;
   id: string;
   meetingId: string;
   label: string;
-  tag: 'Important' | 'Decision' | 'Action Item' | 'Question' | 'Customer Insight' | string;
+  tag:
+    | 'Important'
+    | 'Decision'
+    | 'Action Item'
+    | 'Question'
+    | 'Customer Insight'
+    | string;
   startTime: number;
   quote?: string;
 }
 
 export type SummaryTemplateId =
-  | 'general'
-  | 'executive'
-  | 'sales'
-  | 'product'
-  | 'engineering'
-  | 'interview';
+  'general' | 'executive' | 'sales' | 'product' | 'engineering' | 'interview';
 
 export interface SummaryEvidenceItem {
   text: string;

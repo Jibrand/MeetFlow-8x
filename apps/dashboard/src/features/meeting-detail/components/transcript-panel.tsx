@@ -1,7 +1,11 @@
 import * as React from 'react';
+import { scrollTranscriptToTurn } from '../hooks/use-transcript-sync';
 import { TranscriptTurnItem } from '../../../types/meeting';
 import { useTranscriptSync } from '../hooks/use-transcript-sync';
-import { searchTranscript, splitTextWithMatches } from '../lib/transcript-utils';
+import {
+  searchTranscript,
+  splitTextWithMatches,
+} from '../lib/transcript-utils';
 import { Input, Button, SpeakerAvatar } from '@meetflow/ui';
 import {
   Search,
@@ -18,6 +22,8 @@ export interface TranscriptPanelProps {
   currentTime: number;
   isPlaying: boolean;
   onSeek: (seconds: number) => void;
+  seekRequest?: { time: number; request: number } | null;
+  canFollow?: boolean;
   onAddHighlightAtTurn?: (turn: TranscriptTurnItem) => void;
 }
 
@@ -27,22 +33,20 @@ export function TranscriptPanel({
   isPlaying,
   onSeek,
   onAddHighlightAtTurn,
+  canFollow = false,
+  seekRequest,
 }: TranscriptPanelProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [currentMatchIdx, setCurrentMatchIdx] = React.useState(0);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
-  const {
-    activeTurnIndex,
-    autoFollow,
-    toggleAutoFollow,
-    handleUserScroll,
-  } = useTranscriptSync({
-    turns,
-    currentTime,
-    isPlaying,
-    containerRef,
-  });
+  const { activeTurnIndex, autoFollow, toggleAutoFollow, handleUserScroll } =
+    useTranscriptSync({
+      turns,
+      currentTime,
+      isPlaying,
+      containerRef,
+    });
 
   const searchResults = React.useMemo(() => {
     return searchTranscript(turns, searchQuery);
@@ -52,16 +56,24 @@ export function TranscriptPanel({
     setCurrentMatchIdx(0);
   }, [searchQuery]);
 
+  React.useEffect(() => {
+    if (!seekRequest) return;
+    const turn =
+      turns.find(
+        (turn) =>
+          turn.startTime <= seekRequest.time && turn.endTime > seekRequest.time,
+      ) ??
+      [...turns].reverse().find((turn) => turn.startTime <= seekRequest.time);
+    if (turn) scrollTranscriptToTurn(containerRef.current, turn.id);
+  }, [seekRequest, turns]);
   const handleNextMatch = () => {
     if (searchResults.length === 0) return;
     const nextIdx = (currentMatchIdx + 1) % searchResults.length;
     setCurrentMatchIdx(nextIdx);
+    handleUserScroll();
     const targetTurn = searchResults[nextIdx]?.turn;
     if (targetTurn) {
-      document.getElementById(`turn-${targetTurn.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+      scrollTranscriptToTurn(containerRef.current, targetTurn.id);
     }
   };
 
@@ -70,12 +82,10 @@ export function TranscriptPanel({
     const prevIdx =
       (currentMatchIdx - 1 + searchResults.length) % searchResults.length;
     setCurrentMatchIdx(prevIdx);
+    handleUserScroll();
     const targetTurn = searchResults[prevIdx]?.turn;
     if (targetTurn) {
-      document.getElementById(`turn-${targetTurn.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+      scrollTranscriptToTurn(containerRef.current, targetTurn.id);
     }
   };
 
@@ -83,7 +93,7 @@ export function TranscriptPanel({
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
         <Sparkles className="h-6 w-6 text-muted-foreground/60 mb-2" />
-        <p>No transcript turns available for this meeting recording.</p>
+        <p>No transcript segments are available for this meeting.</p>
       </div>
     );
   }
@@ -124,6 +134,7 @@ export function TranscriptPanel({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label="Previous match"
                 onClick={handlePrevMatch}
                 disabled={searchResults.length === 0}
                 className="h-6 w-6 p-0"
@@ -133,6 +144,7 @@ export function TranscriptPanel({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label="Next match"
                 onClick={handleNextMatch}
                 disabled={searchResults.length === 0}
                 className="h-6 w-6 p-0"
@@ -142,23 +154,41 @@ export function TranscriptPanel({
             </div>
           )}
 
-          <Button
-            variant={autoFollow ? 'default' : 'outline'}
-            size="sm"
-            onClick={toggleAutoFollow}
-            className="h-7 text-[11px] px-2.5"
-            title="Auto-scroll transcript along with audio playback"
-          >
-            Follow: {autoFollow ? 'On' : 'Off'}
-          </Button>
+          {canFollow && (
+            <Button
+              variant={autoFollow ? 'default' : 'outline'}
+              size="sm"
+              onClick={toggleAutoFollow}
+              className="h-7 text-[11px] px-2.5"
+              aria-pressed={autoFollow}
+              title="Follow the active transcript segment during playback. Scrolling manually pauses following for six seconds."
+            >
+              Follow: {autoFollow ? 'On' : 'Off'}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Transcript Turns List */}
       <div
         ref={containerRef}
-        onScroll={handleUserScroll}
-        className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 scrollbar-thin divide-y divide-border/20"
+        onWheel={handleUserScroll}
+        onTouchMove={handleUserScroll}
+        onPointerDown={handleUserScroll}
+        onKeyDown={(event) => {
+          if (
+            [
+              'ArrowUp',
+              'ArrowDown',
+              'PageUp',
+              'PageDown',
+              'Home',
+              'End',
+            ].includes(event.key)
+          )
+            handleUserScroll();
+        }}
+        className="flex-1 min-h-0 overscroll-contain overflow-y-auto p-3 sm:p-4 space-y-2.5 scrollbar-thin divide-y divide-border/20"
       >
         {turns.map((turn, idx) => {
           const isActive = idx === activeTurnIndex;
@@ -218,7 +248,7 @@ export function TranscriptPanel({
                       </mark>
                     ) : (
                       <span key={pIdx}>{part.text}</span>
-                    )
+                    ),
                   )}
                 </p>
               </div>
