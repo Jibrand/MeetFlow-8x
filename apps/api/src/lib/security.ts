@@ -9,25 +9,48 @@ const SALT_ROUNDS = 12;
 export interface AccessTokenPayload {
   userId: string;
   email: string;
+  sessionId?: string;
 }
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  hash: string,
+): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
 
 export function generateAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, config.jwt.accessSecret, {
+    algorithm: 'HS256',
+    audience: 'meetflow-api',
+    issuer: 'meetflow',
     expiresIn: config.jwt.accessTokenExpiresIn as jwt.SignOptions['expiresIn'],
   });
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload | null {
   try {
-    return jwt.verify(token, config.jwt.accessSecret) as AccessTokenPayload;
+    const payload = jwt.verify(token, config.jwt.accessSecret, {
+      algorithms: ['HS256'],
+      audience: 'meetflow-api',
+      issuer: 'meetflow',
+    });
+    if (
+      typeof payload === 'string' ||
+      typeof payload.userId !== 'string' ||
+      typeof payload.email !== 'string' ||
+      typeof payload.sessionId !== 'string'
+    )
+      return null;
+    return {
+      userId: payload.userId,
+      email: payload.email,
+      sessionId: payload.sessionId,
+    };
   } catch {
     return null;
   }
@@ -49,7 +72,7 @@ export const COOKIE_REFRESH_TOKEN = 'meetflow_refresh_token';
 export function setAuthCookies(
   res: Response,
   accessToken: string,
-  refreshToken: string
+  refreshToken: string,
 ): void {
   const isProd = config.isProduction;
 
@@ -59,7 +82,10 @@ export function setAuthCookies(
     secure: isProd,
     sameSite: config.cookies.sameSite,
     path: '/',
-    maxAge: 15 * 60 * 1000, // 15 mins
+    maxAge: Math.max(
+      0,
+      (jwt.decode(accessToken) as { exp: number }).exp * 1000 - Date.now(),
+    ),
   });
 
   // Refresh Token: 7 days, narrowly scoped to auth endpoint where practical

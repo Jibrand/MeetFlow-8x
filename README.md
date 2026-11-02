@@ -114,3 +114,8 @@ Verification details are documented in `CAPTURE-TEST.md`.
 ### Clear local development data
 
 Run `pnpm db:reset-data` after following the [local reset instructions](docs/testing/reset-data.md). The command refuses remote databases, requires a development database and explicit confirmation, and requires API/workers to be stopped.
+
+
+### Admin sign-in
+
+The existing Login/Register pages are available at `/login` and `/register`. Sign in with the configured instance admin; public registration is closed after initial setup. Dashboard and meeting-data routes (including share views) require an active cookie session. Settings and working Logout are in the bottom admin profile menu. See [authentication configuration](docs/api/README.md#admin-authentication-and-deployment) for HTTPS, cookies, CORS, session lifetime and production secrets.

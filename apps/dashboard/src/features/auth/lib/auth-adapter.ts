@@ -4,6 +4,7 @@ import {
   setSessionHint,
   resetSessionInvalidState,
   markSessionInvalid,
+  withSessionLock,
 } from '../../../lib/api-client';
 
 export interface AuthUser {
@@ -34,6 +35,19 @@ class AuthAdapter {
   constructor() {
     // Never trust client storage before backend verification; start strictly unauthenticated
     this.currentUser = null;
+    if (typeof window !== 'undefined') {
+      window.addEventListener('meetflow:session-expired', () =>
+        this.forceUnauthenticated(),
+      );
+      window.addEventListener('storage', (event) => {
+        if (event.key !== 'meetflow:session_active') return;
+        if (event.newValue === null) this.forceUnauthenticated();
+        else {
+          resetSessionInvalidState();
+          void this.syncSessionWithServer();
+        }
+      });
+    }
     // Verify session asynchronously with server
     if (
       typeof window !== 'undefined' &&
@@ -124,7 +138,7 @@ class AuthAdapter {
 
         this.setUser(user);
         return user;
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (currentEpoch !== this.epoch) {
           return this.currentUser;
         }
@@ -141,8 +155,7 @@ class AuthAdapter {
           // Backend offline / connection refused
           this.currentUser = null;
           this.apiAvailable = false;
-          this.apiError =
-            'Cannot connect to MeetFlow API server at http://localhost:4000. Backend is offline.';
+          this.apiError = 'Unable to connect. Please try again.';
           this.notify();
           return null;
         }
@@ -216,19 +229,22 @@ class AuthAdapter {
 
       this.setUser(user);
       return { success: true, user };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (
         err instanceof ApiError &&
         (err.status === 0 || err.code === 'API_UNAVAILABLE')
       ) {
         this.apiAvailable = false;
         this.apiError = err.message;
+        this.notify();
         return {
           success: false,
-          error:
-            'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
+          error: 'Unable to connect. Please try again.',
         };
       }
+      this.apiAvailable = true;
+      this.apiError = null;
+      this.notify();
       return {
         success: false,
         error:
@@ -275,25 +291,28 @@ class AuthAdapter {
         role: data.workspace?.role || 'OWNER',
         workspace: data.workspace?.name || `${name}'s Workspace`,
         workspaceId: data.workspace?.id,
-        onboardingCompleted: false,
+        onboardingCompleted: true,
         onboardingStep: 1,
       };
 
       this.setUser(user);
       return { success: true, user };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (
         err instanceof ApiError &&
         (err.status === 0 || err.code === 'API_UNAVAILABLE')
       ) {
         this.apiAvailable = false;
         this.apiError = err.message;
+        this.notify();
         return {
           success: false,
-          error:
-            'Cannot connect to server at http://localhost:4000. Please ensure the backend is running.',
+          error: 'Unable to connect. Please try again.',
         };
       }
+      this.apiAvailable = true;
+      this.apiError = null;
+      this.notify();
       return {
         success: false,
         error:
@@ -307,7 +326,9 @@ class AuthAdapter {
   async logout(): Promise<void> {
     ++this.epoch;
     // 1. Call backend to revoke database session and clear HTTP-only cookies
-    await apiClient('/auth/logout', { method: 'POST' });
+    await withSessionLock(() =>
+      apiClient('/auth/logout', { method: 'POST', body: '{}' }),
+    );
 
     // 2. Clear authenticated state upon successful revocation
     this.currentUser = null;
@@ -326,6 +347,11 @@ class AuthAdapter {
     this.currentUser = null;
     this.initialized = true;
     markSessionInvalid();
+    try {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch {
+      /* Storage may be unavailable. */
+    }
     this.notify();
   }
 

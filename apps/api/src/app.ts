@@ -6,6 +6,8 @@ import { config } from './config';
 import { requestIdMiddleware } from './middleware/request-id';
 import { notFoundHandler, errorHandler } from './middleware/error-handler';
 import { apiRouter } from './routes';
+import { requireAuth } from './middleware/auth';
+import { requireTrustedMutation } from './middleware/csrf';
 import { logger } from './lib/logger';
 
 export function createApp(): Express {
@@ -35,6 +37,7 @@ export function createApp(): Express {
         'Authorization',
         'x-request-id',
         'x-workspace-id',
+        'x-meetflow-request',
       ],
     }),
   );
@@ -67,7 +70,7 @@ export function createApp(): Express {
   });
 
   // Interactive API Documentation Route
-  app.get(['/api/docs', '/api/docs/'], (_req, res) => {
+  app.get(['/api/docs', '/api/docs/'], requireAuth, (_req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(`<!DOCTYPE html>
 <html>
@@ -87,7 +90,7 @@ export function createApp(): Express {
   });
 
   // Serve raw OpenAPI yaml
-  app.get('/api/openapi.yaml', (_req, res) => {
+  app.get('/api/openapi.yaml', requireAuth, (_req, res) => {
     import('node:fs').then(({ readFileSync, existsSync }) => {
       import('node:path').then(({ resolve }) => {
         const specPath = resolve(process.cwd(), '../../docs/api/openapi.yaml');
@@ -104,7 +107,7 @@ export function createApp(): Express {
   });
 
   // API router
-  app.use('/api', apiRouter);
+  app.use('/api', requireTrustedMutation, apiRouter);
 
   // Fallback 404 handler
   app.use(notFoundHandler);

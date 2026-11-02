@@ -92,8 +92,17 @@ export function resetSessionInvalidState(): void {
 }
 
 export function markSessionInvalid(): void {
+  const changed = !sessionKnownInvalid;
   sessionKnownInvalid = true;
   setSessionHint(false);
+  if (changed && typeof window !== 'undefined')
+    window.dispatchEvent(new Event('meetflow:session-expired'));
+}
+
+export async function withSessionLock<T>(work: () => Promise<T>): Promise<T> {
+  return typeof navigator !== 'undefined' && navigator.locks
+    ? navigator.locks.request('meetflow-session', work)
+    : work();
 }
 
 /**
@@ -111,7 +120,7 @@ export async function performTokenRefresh(): Promise<boolean> {
     return false;
   }
 
-  refreshPromise = (async () => {
+  refreshPromise = withSessionLock(async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -122,6 +131,7 @@ export async function performTokenRefresh(): Promise<boolean> {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          'x-meetflow-request': '1',
         },
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
@@ -140,8 +150,7 @@ export async function performTokenRefresh(): Promise<boolean> {
       }
 
       // Expected unauthenticated outcome (401 REFRESH_TOKEN_REQUIRED or INVALID_REFRESH_TOKEN)
-      sessionKnownInvalid = true;
-      setSessionHint(false);
+      markSessionInvalid();
       return false;
     } catch (error) {
       // Network error or backend unreachable
@@ -153,7 +162,7 @@ export async function performTokenRefresh(): Promise<boolean> {
     } finally {
       refreshPromise = null;
     }
-  })();
+  });
 
   return refreshPromise;
 }
@@ -171,6 +180,7 @@ export async function apiClient<T>(
       ? {}
       : { 'Content-Type': 'application/json' }),
     Accept: 'application/json',
+    'x-meetflow-request': '1',
   };
 
   const controller = new AbortController();
@@ -203,19 +213,13 @@ export async function apiClient<T>(
         endpoint.includes('/auth/refresh') ||
         endpoint.includes('/auth/logout');
 
-      // Attempt token refresh at most ONCE for non-auth endpoints when session hint is active
+      // Restore from HTTP-only cookies even if browser storage was cleared. Retry once.
       if (!isAuthEndpoint && !options._isRetry && !sessionKnownInvalid) {
-        const shouldAttemptRefresh = hasSessionHint();
-        if (shouldAttemptRefresh) {
-          const refreshed = await performTokenRefresh();
-          if (refreshed) {
-            // Retry the original request exactly once with rotated credentials
-            return apiClient<T>(endpoint, { ...options, _isRetry: true });
-          }
-        }
-        // Immediately mark session invalid on refresh failure or absence of hint
-        markSessionInvalid();
+        const refreshed = await performTokenRefresh();
+        if (refreshed)
+          return apiClient<T>(endpoint, { ...options, _isRetry: true });
       }
+      if (!isAuthEndpoint) markSessionInvalid();
 
       const json = await response.json().catch(() => null);
       const errPayload: ApiErrorPayload = json?.error || {

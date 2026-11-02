@@ -1,3 +1,4 @@
+import { requireAuth } from '../middleware/auth';
 import { projectsRouter } from '../modules/projects/projects.routes';
 import { publicMeetingsRouter } from '../modules/meetings/collaboration.routes';
 import { Router } from 'express';
@@ -18,7 +19,7 @@ apiRouter.use('/health', healthRouter);
 // Versioned API namespace (/api/v1)
 const v1Router = Router();
 
-v1Router.get('/', (req, res) => {
+v1Router.get('/', requireAuth, (req, res) => {
   res.json({
     success: true,
     data: {
@@ -34,9 +35,14 @@ v1Router.get('/', (req, res) => {
   });
 });
 
-v1Router.use('/public/meetings', publicMeetingsRouter);
-v1Router.use(projectsRouter);
+v1Router.use('/public/meetings', requireAuth, publicMeetingsRouter);
 v1Router.use('/auth', authRouter);
+v1Router.use(requireAuth);
+v1Router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+v1Router.use(projectsRouter);
 v1Router.use('/users', usersRouter);
 v1Router.use('/workspaces', workspacesRouter);
 v1Router.use('/meetings', meetingsRouter);
@@ -49,7 +55,7 @@ apiRouter.use('/v1', v1Router);
 
 // Alias root namespaces for convenience: /api/auth/* -> v1Router
 apiRouter.use('/auth', authRouter);
-apiRouter.use('/users', usersRouter);
-apiRouter.use('/workspaces', workspacesRouter);
+apiRouter.use('/users', requireAuth, usersRouter);
+apiRouter.use('/workspaces', requireAuth, workspacesRouter);
 apiRouter.use('/meetings', meetingsRouter);
 apiRouter.use('/action-items', actionItemsRouter);

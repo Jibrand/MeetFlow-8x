@@ -4,6 +4,8 @@ import { ManagementView } from './features/projects/management-view';
 import { BoardView } from './features/projects/board-view';
 import { IntelligenceView } from './features/projects/intelligence-view';
 import { publicMeetingRoute } from './routes/public-meeting';
+import { loginRoute } from './routes/login';
+import { registerRoute } from './routes/register';
 import { rootRoute } from './routes/root';
 import { indexRoute, MeetingsPage } from './routes/index';
 import { overviewRoute } from './routes/overview';
@@ -21,16 +23,15 @@ const meetingsRoute = createRoute({
   component: MeetingsPage,
 });
 
-const legacyRoutes = (
-  ['/login', '/register', '/forgot-password', '/onboarding'] as const
-).map((path) =>
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path,
-    beforeLoad: () => {
-      throw redirect({ to: '/' });
-    },
-  }),
+const legacyRoutes = (['/forgot-password', '/onboarding'] as const).map(
+  (path) =>
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path,
+      beforeLoad: () => {
+        throw redirect({ to: '/' });
+      },
+    }),
 );
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -50,7 +51,9 @@ const decisionsRoute = createRoute({
 const followupsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/followups',
-  beforeLoad: () => { throw redirect({ to: '/board' }); },
+  beforeLoad: () => {
+    throw redirect({ to: '/board' });
+  },
 });
 const aiActionsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -59,6 +62,8 @@ const aiActionsRoute = createRoute({
 });
 const routeTree = rootRoute.addChildren([
   publicMeetingRoute,
+  loginRoute,
+  registerRoute,
   indexRoute,
   overviewRoute,
   meetingsRoute,

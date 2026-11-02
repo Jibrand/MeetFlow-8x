@@ -3,13 +3,17 @@ import { prisma } from '../../lib/prisma';
 import { UpdateWorkspaceSchema } from './workspaces.schema';
 
 export class WorkspacesController {
-  async getCurrentWorkspace(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getCurrentWorkspace(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const userId = req.user!.userId;
 
       // Find user's primary workspace membership
       const membership = await prisma.workspaceMember.findFirst({
-        where: { userId },
+        where: { userId, workspaceId: req.workspaceId! },
         include: {
           workspace: {
             include: {
@@ -24,8 +28,15 @@ export class WorkspacesController {
       if (!membership) {
         res.status(404).json({
           success: false,
-          error: { code: 'WORKSPACE_NOT_FOUND', message: 'No workspace found for this user.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'WORKSPACE_NOT_FOUND',
+            message: 'No workspace found for this user.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -42,29 +53,44 @@ export class WorkspacesController {
           createdAt: membership.workspace.createdAt,
           updatedAt: membership.workspace.updatedAt,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
     }
   }
 
-  async updateCurrentWorkspace(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async updateCurrentWorkspace(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const userId = req.user!.userId;
       const input = UpdateWorkspaceSchema.parse(req.body);
 
       // Verify user has OWNER or ADMIN role
       const membership = await prisma.workspaceMember.findFirst({
-        where: { userId },
+        where: { userId, workspaceId: req.workspaceId! },
         include: { workspace: true },
       });
 
       if (!membership) {
         res.status(404).json({
           success: false,
-          error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'WORKSPACE_NOT_FOUND',
+            message: 'Workspace not found.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -72,8 +98,16 @@ export class WorkspacesController {
       if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') {
         res.status(403).json({
           success: false,
-          error: { code: 'FORBIDDEN', message: 'Only workspace owners and administrators can update settings.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'FORBIDDEN',
+            message:
+              'Only workspace owners and administrators can update settings.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -82,7 +116,9 @@ export class WorkspacesController {
         where: { id: membership.workspaceId },
         data: {
           ...(input.name ? { name: input.name } : {}),
-          ...(input.organizationName !== undefined ? { organizationName: input.organizationName } : {}),
+          ...(input.organizationName !== undefined
+            ? { organizationName: input.organizationName }
+            : {}),
         },
       });
 
@@ -96,7 +132,11 @@ export class WorkspacesController {
           role: membership.role,
           updatedAt: updated.updatedAt,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);

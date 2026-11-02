@@ -1,4 +1,6 @@
 import { prisma } from '../../lib/prisma';
+import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import {
   hashPassword,
   verifyPassword,
@@ -6,402 +8,266 @@ import {
   generateOpaqueToken,
   hashToken,
 } from '../../lib/security';
-import { RegisterInput, LoginInput, ResetPasswordInput } from './auth.schema';
+import type { RegisterInput, LoginInput } from './auth.schema';
 import { config } from '../../config';
 
-export interface AuthResult {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    avatarUrl: string | null;
-    role: string;
-  };
-  workspace: {
-    id: string;
-    name: string;
-    slug: string;
-    role: string;
-  };
-  onboarding: {
-    completed: boolean;
-    currentStep: number;
-    professionalRole?: string | null;
-    primaryUseCases?: string[];
-  };
-  accessToken: string;
-  refreshToken: string;
-}
+const authError = (status: number, code: string, message: string) =>
+  Object.assign(new Error(message), { status, code });
+const invalidCredentials = () =>
+  authError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
+const registrationClosed = () =>
+  authError(
+    403,
+    'REGISTRATION_CLOSED',
+    'The admin account is already configured. Please sign in.',
+  );
+const sessionExpiry = () =>
+  new Date(Date.now() + config.jwt.refreshTokenExpiresDays * 86400000);
 
 export class AuthService {
-  async register(input: RegisterInput): Promise<AuthResult> {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: input.email },
+  async registrationStatus() {
+    const state = await prisma.instanceState.findUnique({
+      where: { id: 'primary' },
     });
+    if (!state) return { registrationOpen: (await prisma.user.count()) === 0 };
+    const admin = await prisma.user.findUnique({
+      where: { id: state.userId },
+      select: { passwordHash: true },
+    });
+    // Migration-created disabled placeholders are not registered accounts.
+    return { registrationOpen: admin?.passwordHash === '!disabled' };
+  }
 
-    if (existingUser) {
-      const err = new Error('An account with this email address already exists.');
-      // @ts-expect-error custom error code
-      err.code = 'EMAIL_ALREADY_EXISTS';
-      // @ts-expect-error status
-      err.status = 409;
-      throw err;
-    }
+  private async newSession(
+    tx: Prisma.TransactionClient,
+    user: { id: string; email: string },
+  ) {
+    const id = randomUUID();
+    const { token, hash } = generateOpaqueToken();
+    await tx.authSession.create({
+      data: {
+        id,
+        userId: user.id,
+        refreshTokenHash: hash,
+        expiresAt: sessionExpiry(),
+      },
+    });
+    return {
+      accessToken: generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        sessionId: id,
+      }),
+      refreshToken: token,
+    };
+  }
 
+  async register(input: RegisterInput) {
+    if (!(await this.registrationStatus()).registrationOpen)
+      throw registrationClosed();
     const passwordHash = await hashPassword(input.password);
-    const workspaceName = input.workspaceName || `${input.name}'s Workspace`;
-    const slugBase = workspaceName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-    const slug = `${slugBase || 'workspace'}-${Date.now().toString(36)}`;
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // A transaction-scoped PostgreSQL lock serializes first-admin registration.
+        // No second request can create or claim another administrator.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(826104921)::text AS locked`;
+        const state = await tx.instanceState.findUnique({
+          where: { id: 'primary' },
+        });
+        let user;
+        let workspace;
+        if (state) {
+          const admin = await tx.user.findUniqueOrThrow({
+            where: { id: state.userId },
+          });
+          if (admin.passwordHash !== '!disabled') throw registrationClosed();
+          user = await tx.user.update({
+            where: { id: admin.id },
+            data: {
+              name: input.name,
+              email: input.email,
+              passwordHash,
+              role: 'ADMIN',
+            },
+          });
+          workspace = await tx.workspace.update({
+            where: { id: state.workspaceId },
+            data: input.workspaceName ? { name: input.workspaceName } : {},
+          });
+          await tx.authSession.updateMany({
+            where: { userId: admin.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        } else {
+          if ((await tx.user.count()) > 0) throw registrationClosed();
+          user = await tx.user.create({
+            data: {
+              name: input.name,
+              email: input.email,
+              passwordHash,
+              role: 'ADMIN',
+            },
+          });
+          workspace = await tx.workspace.create({
+            data: {
+              name: input.workspaceName || `${input.name}'s Workspace`,
+              slug: `meetflow-${randomUUID()}`,
+            },
+          });
+          await tx.instanceState.create({
+            data: { id: 'primary', userId: user.id, workspaceId: workspace.id },
+          });
+        }
+        await tx.workspaceMember.upsert({
+          where: {
+            userId_workspaceId: { userId: user.id, workspaceId: workspace.id },
+          },
+          create: { userId: user.id, workspaceId: workspace.id, role: 'OWNER' },
+          update: { role: 'OWNER' },
+        });
+        await tx.userOnboarding.upsert({
+          where: { userId: user.id },
+          create: { userId: user.id, completedAt: new Date(), currentStep: 1 },
+          update: { completedAt: new Date() },
+        });
+        const tokens = await this.newSession(tx, user);
+        return { userId: user.id, ...tokens };
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+    return {
+      ...(await this.getCurrentUser(result.userId)),
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  }
 
-    // Create user, workspace, membership, and onboarding transactionally
-    const { user, workspace, member, onboarding } = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          name: input.name,
-          email: input.email,
-          passwordHash,
-        },
+  async login(input: LoginInput) {
+    const state = await prisma.instanceState.findUnique({
+      where: { id: 'primary' },
+    });
+    const user = state
+      ? await prisma.user.findUnique({ where: { id: state.userId } })
+      : null;
+    // Always do password work so an incorrect email is not a cheap timing oracle.
+    const valid = await verifyPassword(
+      input.password,
+      user?.passwordHash?.startsWith('$2')
+        ? user.passwordHash
+        : '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxFDr0mqZbP2Sl2c5hIz0yQx.Ku',
+    );
+    if (
+      !user ||
+      user.email.toLowerCase() !== input.email ||
+      !valid ||
+      user.passwordHash === '!disabled'
+    )
+      throw invalidCredentials();
+    const tokens = await prisma.$transaction((tx) => this.newSession(tx, user));
+    return { ...(await this.getCurrentUser(user.id)), ...tokens };
+  }
+
+  async refresh(rawRefreshToken: string) {
+    const refreshTokenHash = hashToken(rawRefreshToken);
+    const { token, hash } = generateOpaqueToken();
+    return prisma.$transaction(async (tx) => {
+      const session = await tx.authSession.findUnique({
+        where: { refreshTokenHash },
+        include: { user: true },
       });
-
-      const newWorkspace = await tx.workspace.create({
-        data: {
-          name: workspaceName,
-          slug,
-        },
+      const state = await tx.instanceState.findUnique({
+        where: { id: 'primary' },
       });
-
-      const newMember = await tx.workspaceMember.create({
-        data: {
-          userId: newUser.id,
-          workspaceId: newWorkspace.id,
-          role: 'OWNER',
+      if (
+        !session ||
+        session.revokedAt ||
+        session.expiresAt <= new Date() ||
+        state?.userId !== session.userId
+      ) {
+        throw authError(
+          401,
+          'INVALID_REFRESH_TOKEN',
+          'Your session has expired. Please sign in again.',
+        );
+      }
+      // Compare-and-swap prevents replay and concurrent rotation of one token.
+      // Keep the session ID stable so logout invalidates every token from this session.
+      const claimed = await tx.authSession.updateMany({
+        where: {
+          id: session.id,
+          refreshTokenHash,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
         },
+        data: { refreshTokenHash: hash, lastUsedAt: new Date() },
       });
-
-      const newOnboarding = await tx.userOnboarding.create({
-        data: {
-          userId: newUser.id,
-          currentStep: 1,
-        },
-      });
-
+      if (!claimed.count)
+        throw authError(
+          401,
+          'INVALID_REFRESH_TOKEN',
+          'Your session has expired. Please sign in again.',
+        );
       return {
-        user: newUser,
-        workspace: newWorkspace,
-        member: newMember,
-        onboarding: newOnboarding,
+        accessToken: generateAccessToken({
+          userId: session.userId,
+          email: session.user.email,
+          sessionId: session.id,
+        }),
+        refreshToken: token,
       };
     });
-
-    // Generate tokens
-    const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-    const { token: refreshToken, hash: refreshTokenHash } = generateOpaqueToken();
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + config.jwt.refreshTokenExpiresDays);
-
-    await prisma.authSession.create({
-      data: {
-        userId: user.id,
-        refreshTokenHash,
-        expiresAt,
-      },
-    });
-
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-      },
-      workspace: {
-        id: workspace.id,
-        name: workspace.name,
-        slug: workspace.slug,
-        role: member.role,
-      },
-      onboarding: {
-        completed: !!onboarding.completedAt,
-        currentStep: onboarding.currentStep,
-        professionalRole: onboarding.professionalRole,
-        primaryUseCases: onboarding.primaryUseCases,
-      },
-      accessToken,
-      refreshToken,
-    };
   }
 
-  async login(input: LoginInput): Promise<AuthResult> {
-    const user = await prisma.user.findUnique({
-      where: { email: input.email },
-      include: {
-        workspaceMembers: {
-          include: { workspace: true },
-          take: 1,
-        },
-        onboarding: true,
+  async logout(rawRefreshToken?: string, sessionId?: string) {
+    if (!rawRefreshToken && !sessionId) return;
+    await prisma.authSession.updateMany({
+      where: {
+        revokedAt: null,
+        OR: [
+          ...(rawRefreshToken
+            ? [{ refreshTokenHash: hashToken(rawRefreshToken) }]
+            : []),
+          ...(sessionId ? [{ id: sessionId }] : []),
+        ],
       },
-    });
-
-    if (!user || !user.passwordHash) {
-      const err = new Error('Invalid email or password.');
-      // @ts-expect-error custom error code
-      err.code = 'INVALID_CREDENTIALS';
-      // @ts-expect-error status
-      err.status = 401;
-      throw err;
-    }
-
-    const isValid = await verifyPassword(input.password, user.passwordHash);
-    if (!isValid) {
-      const err = new Error('Invalid email or password.');
-      // @ts-expect-error custom error code
-      err.code = 'INVALID_CREDENTIALS';
-      // @ts-expect-error status
-      err.status = 401;
-      throw err;
-    }
-
-    // Determine primary workspace
-    let activeWorkspace = user.workspaceMembers[0]?.workspace;
-    let memberRole = user.workspaceMembers[0]?.role || 'OWNER';
-
-    if (!activeWorkspace) {
-      // Auto-create workspace if user has none
-      const slug = `ws-${user.name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString(36)}`;
-      activeWorkspace = await prisma.workspace.create({
-        data: {
-          name: `${user.name}'s Workspace`,
-          slug,
-          members: {
-            create: {
-              userId: user.id,
-              role: 'OWNER',
-            },
-          },
-        },
-      });
-      memberRole = 'OWNER';
-    }
-
-    // Generate tokens & session
-    const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-    const { token: refreshToken, hash: refreshTokenHash } = generateOpaqueToken();
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + config.jwt.refreshTokenExpiresDays);
-
-    await prisma.authSession.create({
-      data: {
-        userId: user.id,
-        refreshTokenHash,
-        expiresAt,
-      },
-    });
-
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-      },
-      workspace: {
-        id: activeWorkspace.id,
-        name: activeWorkspace.name,
-        slug: activeWorkspace.slug,
-        role: memberRole,
-      },
-      onboarding: {
-        completed: !!user.onboarding?.completedAt,
-        currentStep: user.onboarding?.currentStep || 1,
-        professionalRole: user.onboarding?.professionalRole,
-        primaryUseCases: user.onboarding?.primaryUseCases || [],
-      },
-      accessToken,
-      refreshToken,
-    };
-  }
-
-  async refresh(rawRefreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    const refreshTokenHash = hashToken(rawRefreshToken);
-
-    const session = await prisma.authSession.findUnique({
-      where: { refreshTokenHash },
-      include: { user: true },
-    });
-
-    if (!session || session.revokedAt || session.expiresAt < new Date()) {
-      const err = new Error('Invalid or expired refresh token. Please sign in again.');
-      // @ts-expect-error code
-      err.code = 'INVALID_REFRESH_TOKEN';
-      // @ts-expect-error status
-      err.status = 401;
-      throw err;
-    }
-
-    // Token rotation: Revoke old session
-    await prisma.authSession.update({
-      where: { id: session.id },
       data: { revokedAt: new Date() },
     });
-
-    // Create new session
-    const newAccessToken = generateAccessToken({
-      userId: session.user.id,
-      email: session.user.email,
-    });
-    const { token: newRefreshToken, hash: newRefreshTokenHash } = generateOpaqueToken();
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + config.jwt.refreshTokenExpiresDays);
-
-    await prisma.authSession.create({
-      data: {
-        userId: session.user.id,
-        refreshTokenHash: newRefreshTokenHash,
-        expiresAt,
-      },
-    });
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    };
-  }
-
-  async logout(rawRefreshToken?: string): Promise<void> {
-    if (rawRefreshToken) {
-      const refreshTokenHash = hashToken(rawRefreshToken);
-      await prisma.authSession.updateMany({
-        where: { refreshTokenHash, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    }
   }
 
   async getCurrentUser(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        workspaceMembers: {
-          include: { workspace: true },
-          take: 1,
-        },
-        onboarding: true,
-      },
+    const state = await prisma.instanceState.findUnique({
+      where: { id: 'primary' },
     });
-
-    if (!user) {
-      const err = new Error('User not found.');
-      // @ts-expect-error code
-      err.code = 'USER_NOT_FOUND';
-      // @ts-expect-error status
-      err.status = 404;
-      throw err;
-    }
-
-    const member = user.workspaceMembers[0];
-    const workspace = member?.workspace || {
-      id: 'default',
-      name: `${user.name}'s Workspace`,
-      slug: 'default-workspace',
-      organizationName: null,
-    };
-
+    if (state?.userId !== userId)
+      throw authError(
+        401,
+        'UNAUTHORIZED',
+        'Please sign in as the workspace admin.',
+      );
+    const [user, workspace] = await Promise.all([
+      prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          createdAt: true,
+        },
+      }),
+      prisma.workspace.findUniqueOrThrow({ where: { id: state.workspaceId } }),
+    ]);
     return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      user: { ...user, role: 'ADMIN' },
       workspace: {
         id: workspace.id,
         name: workspace.name,
         slug: workspace.slug,
         organizationName: workspace.organizationName,
-        role: member?.role || 'OWNER',
+        role: 'OWNER',
       },
-      onboarding: {
-        completed: !!user.onboarding?.completedAt,
-        currentStep: user.onboarding?.currentStep || 1,
-        professionalRole: user.onboarding?.professionalRole,
-        primaryUseCases: user.onboarding?.primaryUseCases || [],
-      },
+      onboarding: { completed: true, currentStep: 1 },
     };
   }
-
-  async forgotPassword(email: string): Promise<void> {
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      // Return cleanly to prevent email enumeration
-      return;
-    }
-
-    const { token: _token, hash: tokenHash } = generateOpaqueToken();
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1); // 1 hour expiration
-
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-      },
-    });
-
-    // In production without configured email credentials, report in server logs safely without token exposure
-  }
-
-  async resetPassword(input: ResetPasswordInput): Promise<void> {
-    const tokenHash = hashToken(input.token);
-
-    const resetToken = await prisma.passwordResetToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
-    });
-
-    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
-      const err = new Error('Password reset token is invalid or has expired.');
-      // @ts-expect-error code
-      err.code = 'INVALID_RESET_TOKEN';
-      // @ts-expect-error status
-      err.status = 400;
-      throw err;
-    }
-
-    const passwordHash = await hashPassword(input.newPassword);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: resetToken.userId },
-        data: { passwordHash },
-      });
-
-      await tx.passwordResetToken.update({
-        where: { id: resetToken.id },
-        data: { usedAt: new Date() },
-      });
-
-      // Revoke all existing sessions for this user
-      await tx.authSession.updateMany({
-        where: { userId: resetToken.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    });
-  }
 }
-
 export const authService = new AuthService();

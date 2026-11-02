@@ -16,6 +16,12 @@ export async function requireWorkspace(
 ): Promise<void> {
   try {
     const admin = await instanceContext();
+    if (!req.user || req.user.userId !== admin.userId) {
+      throw Object.assign(new Error('Please sign in as the workspace admin.'), {
+        status: 401,
+        code: 'UNAUTHORIZED',
+      });
+    }
     req.workspaceId = admin.workspaceId;
     req.workspaceRole = 'OWNER';
     next();

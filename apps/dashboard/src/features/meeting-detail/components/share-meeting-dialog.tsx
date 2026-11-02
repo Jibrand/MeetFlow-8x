@@ -92,8 +92,8 @@ export function ShareMeetingDialog({
         <DialogHeader>
           <DialogTitle>Share meeting</DialogTitle>
           <DialogDescription>
-            Anyone with an enabled link can read only the sections you allow.
-            Transcript sharing is off by default.
+            An enabled link shows only the sections you allow. Admin sign-in is
+            required. Transcript sharing is off by default.
           </DialogDescription>
         </DialogHeader>
         {query.isPending ? (
@@ -108,7 +108,7 @@ export function ShareMeetingDialog({
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Public access is {query.data?.enabled ? 'enabled' : 'disabled'}.
+              Link access is {query.data?.enabled ? 'enabled' : 'disabled'}.
               Regenerating or revoking invalidates the previous link.
             </p>
             <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2">
@@ -138,7 +138,7 @@ export function ShareMeetingDialog({
             {url && (
               <div className="flex gap-2">
                 <Input
-                  aria-label="Public share link"
+                  aria-label="Meeting share link"
                   readOnly
                   value={url}
                   onFocus={(event) => event.target.select()}
@@ -148,7 +148,7 @@ export function ShareMeetingDialog({
                   onClick={() => {
                     void navigator.clipboard
                       .writeText(url)
-                      .then(() => toast.success('Public link copied'))
+                      .then(() => toast.success('Meeting link copied'))
                       .catch(() => toast.error('Could not copy link.'));
                   }}
                 >

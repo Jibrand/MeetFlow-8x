@@ -5,27 +5,31 @@ info:
   description: >
     Production-quality meeting intelligence engine API for MeetFlow AI.
     Single-admin, project-isolated meeting-to-execution APIs backed by Neon PostgreSQL.
-    Administrative routes require a trusted private deployment boundary; no login, invitations or RBAC.
+    All meeting-data routes require an active admin cookie session, including share-link views. Only health and authentication entry points are unauthenticated. All mutations require x-meetflow-request: 1 and an allowed browser Origin. There are no invitations or role-management features.
 servers:
   - url: http://localhost:4000/api/v1
     description: Local Development Server (v1)
   - url: http://localhost:4000/api
     description: Local Development Server (Root Namespace)
 
+security:
+  - cookieAuth: []
+
 paths:
   /health:
     get:
+      security: []
       summary: API & Database Health Check
       description: Returns real-time operational status and database connection health.
       responses:
-        '200':
+        "200":
           description: Operational health status.
           content:
             application/json:
               example:
                 status: ok
                 uptime: 142.5
-                timestamp: '2026-11-02T02:00:00.000Z'
+                timestamp: "2026-11-02T02:00:00.000Z"
                 environment: development
                 version: v1
                 services:
@@ -35,13 +39,17 @@ paths:
   /users/me:
     get:
       summary: Get Current User Profile
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           description: User profile.
     patch:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Update Personal Profile
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         content:
           application/json:
@@ -51,20 +59,24 @@ paths:
                 name:
                   type: string
       responses:
-        '200':
+        "200":
           description: Profile updated.
 
   /workspaces/current:
     get:
       summary: Get Current Workspace
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           description: Workspace details and user membership role.
     patch:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Update Current Workspace
       description: Requires OWNER or ADMIN role.
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         content:
           application/json:
@@ -77,15 +89,18 @@ paths:
                   type: string
                   nullable: true
       responses:
-        '200':
+        "200":
           description: Workspace updated.
-        '403':
+        "403":
           description: Forbidden (insufficient role).
 
   /meetings:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Create Meeting & Optional Asynchronous Ingestion
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -130,11 +145,12 @@ paths:
                     sourceFilename: { type: string }
                     sourceFormat: { type: string, enum: [txt, srt, vtt] }
       responses:
-        '201':
+        "201":
           description: Meeting is saved. With a transcript, queueStatus is QUEUED on dispatch or REDIS_UNAVAILABLE on failure; dispatch failure returns processingStatus FAILED (not a perpetually queued meeting).
     get:
       summary: List Workspace Meetings
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - { in: query, name: projectId, schema: { type: string, format: uuid } }
         - { in: query, name: companyId, schema: { type: string, format: uuid } }
@@ -175,36 +191,39 @@ paths:
             }
           description: Newest/created order by creation time; oldest by start time; longest by duration. All orders have a deterministic ID tie-breaker.
       responses:
-        '200':
+        "200":
           description: Paginated list of workspace meetings with summary previews and counts.
 
   /meetings/overview:
     get:
       summary: Get Consolidated Overview Analytics
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - { in: query, name: projectId, schema: { type: string, format: uuid } }
         - { in: query, name: companyId, schema: { type: string, format: uuid } }
       responses:
-        '200':
+        "200":
           description: Aggregated real workspace KPI metrics, recent meetings with actionItemCount, and open attention tasks. Empty workspaces return zero counts and empty lists.
 
   /meetings/{id}:
     get:
       summary: Get Meeting Details
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Meeting details with participants, transcript metadata, summary, segments, and action items.
     patch:
       summary: Update Meeting Metadata
       description: Updates Neon metadata atomically. Omitted participants are retained; an explicit array replaces participants, including an empty array to remove all. Names are trimmed and must be unique case-insensitively.
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -213,9 +232,9 @@ paths:
               type: object
               properties:
                 title: { type: string, minLength: 1, maxLength: 255 }
-                description: { type: [string, 'null'], maxLength: 2000 }
+                description: { type: [string, "null"], maxLength: 2000 }
                 startAt: { type: string, format: date-time }
-                endAt: { type: [string, 'null'], format: date-time }
+                endAt: { type: [string, "null"], format: date-time }
                 timezone: { type: string }
                 meetingStatus:
                   { type: string, enum: [SCHEDULED, COMPLETED, CANCELLED] }
@@ -227,82 +246,92 @@ paths:
                     required: [name]
                     properties:
                       name: { type: string, minLength: 1, maxLength: 100 }
-                      email: { type: [string, 'null'], format: email }
-                      role: { type: [string, 'null'] }
+                      email: { type: [string, "null"], format: email }
+                      role: { type: [string, "null"] }
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Updated meeting record.
     delete:
       summary: Delete Meeting
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Meeting deleted successfully.
 
   /meetings/{id}/transcript:
     post:
       summary: Upload Transcript to Existing Meeting
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Transcript saved. queueStatus is QUEUED or REDIS_UNAVAILABLE; a dispatch failure marks the persisted meeting and job FAILED.
     get:
       summary: Get Transcript and Segments
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Raw transcript and ordered turns.
 
   /meetings/{id}/processing:
     get:
       summary: Poll Processing Status & Progress
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Live processingStatus, stage, progress (0-100), attempts, errorCode, startedAt and completedAt. READY has progress 100. FAILED contains an actionable errorCode string. Retry attempts remain QUEUED until running; missing workers or orphaned queue jobs are reconciled by the API watchdog.
 
   /meetings/{id}/reprocess:
     post:
       summary: Re-enqueue Meeting Processing
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Returns queueStatus (QUEUED or REDIS_UNAVAILABLE) and processingStatus (QUEUED or FAILED). Completed and failed retained queue jobs are replaced; an existing active job is not duplicated or reset.
 
   /action-items:
     get:
       summary: List Workspace Action Items
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - { in: query, name: projectId, schema: { type: string, format: uuid } }
         - { in: query, name: companyId, schema: { type: string, format: uuid } }
@@ -316,11 +345,14 @@ paths:
           name: search
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Workspace action items list.
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Create Manual Action Item
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -345,38 +377,45 @@ paths:
                 status:
                   { type: string, enum: [TODO, IN_PROGRESS, BLOCKED, DONE] }
       responses:
-        '201':
+        "201":
           description: Action item created.
 
   /action-items/{id}:
     patch:
       summary: Update Action Item
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Action item updated.
     delete:
       summary: Delete Action Item
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
         - in: path
           name: id
           required: true
           schema: { type: string }
       responses:
-        '200':
+        "200":
           description: Action item deleted.
 
   /ask:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Ask about real workspace meeting content
       description: Retrieves bounded workspace sources and calls the environment-configured OpenAI model. Citations reference stored summaries, segments or action items. Maximum 20 questions per user per minute.
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -403,25 +442,28 @@ paths:
                       role: { type: string, enum: [user, assistant] }
                       content: { type: string, maxLength: 5000 }
       responses:
-        '200':
+        "200":
           {
             description: Success envelope containing answer,
             citations and retrieval scope; no-content answers are explicit.,
           }
-        '404':
+        "404":
           {
             description: Requested meeting is outside the current workspace or does not exist.,
           }
-        '429': { description: Question rate limit exceeded. }
-        '502':
+        "429": { description: Question rate limit exceeded. }
+        "502":
           {
             description: Invalid provider response; no fabricated answer is substituted.,
           }
 
   /meetings/media:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Upload private audio or video and enqueue transcription
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -442,38 +484,40 @@ paths:
                     description: JSON-encoded Create Meeting metadata with required projectId/title/startAt and optional companyId/participants/timezone/description.,
                   }
       responses:
-        '201':
+        "201":
           {
             description: Saved meeting with queue outcome. Failed Redis dispatch persists FAILED for retry.,
           }
-        '400': { description: Invalid file type or metadata. }
-        '413': { description: Upload exceeds the maximum size. }
-        '429':
+        "400": { description: Invalid file type or metadata. }
+        "413": { description: Upload exceeds the maximum size. }
+        "429":
           { description: Upload limit of five per user per minute exceeded. }
 
   /meetings/{id}/media:
     get:
       summary: Stream a workspace meeting's private recording
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200':
+        "200":
           {
             description: Private media bytes; disk storage keys are never exposed.,
           }
-        '206': { description: Requested media byte range. }
-        '404': { description: Recording or workspace meeting not found. }
+        "206": { description: Requested media byte range. }
+        "404": { description: Recording or workspace meeting not found. }
 
   /integrations/calendar:
     get:
       summary: Get current user's Google Calendar connection status
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: configured,
             connected,
@@ -483,15 +527,18 @@ paths:
 
   /integrations/calendar/authorize:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Start Google Calendar read-only OAuth consent
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, additionalProperties: false }
       responses:
-        '200':
+        "200":
           {
             description: Consent URL; also sets a signed ten-minute HttpOnly state/PKCE cookie. Requires configured Google credentials and encryption key.,
           }
@@ -500,13 +547,14 @@ paths:
     get:
       summary: Complete Google OAuth using signed state cookie and PKCE
       description: Does not require the access-token cookie. Verifies state, signed cookie expiry/audience, and current workspace membership before storing encrypted tokens.
-      security: []
+      security:
+        - cookieAuth: []
       parameters:
         - { in: query, name: code, schema: { type: string } }
         - { in: query, name: state, schema: { type: string } }
         - { in: query, name: error, schema: { type: string } }
       responses:
-        '302':
+        "302":
           {
             description: Redirect to configured frontend Settings with connected,
             denied or error result.,
@@ -514,31 +562,37 @@ paths:
 
   /integrations/calendar/sync:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Import primary Google Calendar events into Neon
       description: Initial window is one year before/after today; subsequent syncs use an incremental cursor. Expired cursors trigger a full refresh. Cancellations retain meeting notes. Concurrent sync is guarded by a lease.
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, additionalProperties: false }
       responses:
-        '200': { description: Sync outcome or already-running status. }
-        '404': { description: Connect Google Calendar first. }
+        "200": { description: Sync outcome or already-running status. }
+        "404": { description: Connect Google Calendar first. }
 
   /integrations/calendar/disconnect:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Revoke Google authorization and remove stored connection
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, additionalProperties: false }
       responses:
-        '200':
+        "200":
           { description: Disconnected; imported meeting content is preserved. }
-        '404': { description: No connection exists. }
+        "404": { description: No connection exists. }
 
   /meetings/{id}/highlights:
     parameters:
@@ -550,9 +604,10 @@ paths:
         }
     get:
       summary: List persisted meeting highlights
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Active highlight UUIDs,
             label,
@@ -560,10 +615,13 @@ paths:
             tag,
             startTime and hasTimestamp.,
           }
-        '404': { description: Meeting unavailable in the current workspace. }
+        "404": { description: Meeting unavailable in the current workspace. }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Create a persisted meeting highlight
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -577,9 +635,9 @@ paths:
                 quote: { type: string, maxLength: 30000 }
                 tag: { type: string, minLength: 1, maxLength: 100 }
                 startTime:
-                  { type: [number, 'null'], minimum: 0, maximum: 10000000 }
+                  { type: [number, "null"], minimum: 0, maximum: 10000000 }
       responses:
-        '201': { description: Persisted highlight. }
+        "201": { description: Persisted highlight. }
 
   /meetings/{id}/highlights/{highlightId}:
     parameters:
@@ -596,8 +654,11 @@ paths:
           schema: { type: string, format: uuid },
         }
     patch:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Update supplied highlight fields within the current workspace
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -610,15 +671,18 @@ paths:
                 quote: { type: string, maxLength: 30000 }
                 tag: { type: string, minLength: 1, maxLength: 100 }
                 startTime:
-                  { type: [number, 'null'], minimum: 0, maximum: 10000000 }
+                  { type: [number, "null"], minimum: 0, maximum: 10000000 }
       responses:
-        '200': { description: Updated persisted highlight. }
-        '404': { description: Highlight or workspace meeting not found. }
+        "200": { description: Updated persisted highlight. }
+        "404": { description: Highlight or workspace meeting not found. }
     delete:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Soft-delete a highlight, retaining its processing tombstone
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200': { description: Idempotent deleted outcome. }
+        "200": { description: Idempotent deleted outcome. }
 
   /meetings/{id}/sharing:
     parameters:
@@ -630,16 +694,20 @@ paths:
         }
     get:
       summary: Read workspace-authorized sharing management state
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Null or capability token,
             enabled flag and section permissions.,
           }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Enable, disable, update, regenerate or revoke a public capability
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -670,24 +738,25 @@ paths:
                     allowActions: { type: boolean, default: true }
                     allowTranscript: { type: boolean, default: false }
       responses:
-        '200':
+        "200":
           {
             description: Updated management state. Regenerate/revoke atomically invalidate old links.,
           }
 
   /public/meetings/{token}:
     get:
-      summary: Read an anonymous shared meeting using an enabled capability
-      security: []
+      summary: Read a shared meeting with an active admin session and enabled capability
+      security:
+        - cookieAuth: []
       parameters:
         - {
             in: path,
             name: token,
             required: true,
-            schema: { type: string, pattern: '^[A-Za-z0-9_-]{43}$' },
+            schema: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" },
           }
       responses:
-        '200':
+        "200":
           {
             description: Title/startAt and only permitted summary,
             highlights,
@@ -695,9 +764,9 @@ paths:
             private IDs,
             member emails and media URLs. No-store/noindex headers.,
           }
-        '404':
+        "404":
           { description: Invalid, expired, disabled or revoked capability. }
-        '429': { description: Public read rate limit exceeded. }
+        "429": { description: Share-view rate limit exceeded. }
 
   /meetings/{id}/summaries/{type}:
     parameters:
@@ -720,16 +789,20 @@ paths:
         }
     get:
       summary: Read a persisted summary type and generation state
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: status NOT_GENERATED/QUEUED/RUNNING/READY/FAILED,
             content and safe error.,
           }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Enqueue missing summary generation without duplicating existing work
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -740,19 +813,128 @@ paths:
               properties:
                 retry: { type: boolean, default: false }
       responses:
-        '200':
+        "200":
           {
             description: Cached READY content or persisted queue/failure state. General reuses the base summary.,
           }
-        '409':
+        "409":
           { description: Process this meeting before generating a summary. }
 
-  /auth/me:
+  /auth/status:
     get:
-      summary: Read the single-admin instance identity (compatibility metadata, no login/session)
+      summary: Check whether initial admin registration is open
       security: []
       responses:
-        '200':
+        "200":
+          description: Success envelope containing registrationOpen; no identity details.
+  /auth/register:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
+      summary: Register the initial single admin and create a session
+      description: Serialized initial setup; initializes an unconfigured migration placeholder in place. Additional registrations are refused.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 100 }
+                email: { type: string, format: email, maxLength: 254 }
+                password:
+                  {
+                    type: string,
+                    minLength: 8,
+                    description: Requires a letter and number; maximum 72 UTF-8 bytes.,
+                  }
+                workspaceName: { type: string, minLength: 2, maxLength: 100 }
+      responses:
+        "201":
+          {
+            description: Admin/workspace metadata in a success envelope; HTTP-only access and refresh cookies set.,
+          }
+        "400": { description: Invalid input. }
+        "403":
+          { description: REGISTRATION_CLOSED or untrusted mutation request. }
+        "429": { description: Too many registration attempts. }
+  /auth/login:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
+      summary: Sign in as the configured instance admin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 1, maxLength: 1024 }
+      responses:
+        "200":
+          {
+            description: Admin/workspace metadata in a success envelope; HTTP-only access and refresh cookies set.,
+          }
+        "400": { description: Invalid input. }
+        "401":
+          {
+            description: INVALID_CREDENTIALS; other historical accounts cannot sign in.,
+          }
+        "403": { description: Untrusted mutation request. }
+        "429": { description: Too many login attempts. }
+  /auth/refresh:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
+      summary: Rotate the refresh cookie and renew the access cookie
+      description: Requires the opaque HTTP-only refresh cookie. Rotation preserves the session ID and original absolute expiry, and rejects reuse. Tokens in request bodies are not accepted.
+      security:
+        - refreshCookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200":
+          {
+            description: Session refreshed; cookies replaced; no tokens in JSON.,
+          }
+        "401":
+          { description: Missing, expired, revoked or reused refresh token. }
+        "429": { description: Too many refresh requests. }
+  /auth/logout:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
+      summary: Revoke the current session and clear both auth cookies
+      description: Idempotent without a session; also works with an expired access cookie. A transient revocation failure preserves cookies for retry.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200":
+          {
+            description: Logged out; previously issued access tokens for this session can no longer authorize API requests.,
+          }
+        "403": { description: Untrusted mutation request. }
+        "500": { description: Revocation could not be completed; retry logout. }
+  /auth/me:
+    get:
+      summary: Read the authenticated admin and workspace
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -761,24 +943,28 @@ paths:
   /companies:
     get:
       summary: List companies and their projects
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
             stale versions or linked history 409.,
           }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Create a company
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CompanyInput' }
+            schema: { $ref: "#/components/schemas/CompanyInput" }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -793,25 +979,31 @@ paths:
           schema: { type: string, format: uuid },
         }
     patch:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Update supplied company metadata
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CompanyPatch' }
+            schema: { $ref: "#/components/schemas/CompanyPatch" }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
             stale versions or linked history 409.,
           }
     delete:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Delete an empty company (linked projects are restricted)
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -819,15 +1011,18 @@ paths:
           }
   /projects:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Create a project under an explicit company ID
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ProjectInput' }
+            schema: { $ref: "#/components/schemas/ProjectInput" }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -842,25 +1037,31 @@ paths:
           schema: { type: string, format: uuid },
         }
     patch:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Update project metadata/status; explicit ACTIVE acknowledges review assignment
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ProjectPatch' }
+            schema: { $ref: "#/components/schemas/ProjectPatch" }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
             stale versions or linked history 409.,
           }
     delete:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Delete an empty project; execution history is restricted
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -875,8 +1076,11 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Explicitly reassign a meeting and its owned records when no cross-meeting history exists
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -893,7 +1097,7 @@ paths:
                   },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -917,13 +1121,14 @@ paths:
       - {
           in: query,
           name: archived,
-          schema: { type: string, enum: ['true', 'false'] },
+          schema: { type: string, enum: ["true", "false"] },
         }
     get:
       summary: Read project tasks, database counts and distinct owner names; capped at 1000 with truncated flag
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -945,9 +1150,10 @@ paths:
         }
     get:
       summary: Read project task details, source evidence and most recent 100 history events
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -974,8 +1180,11 @@ paths:
           schema: { type: string, enum: [move, duplicate, archive, restore] },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Move/reorder the canonical task or duplicate/archive/restore; move requires version
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -992,12 +1201,12 @@ paths:
                         type: string,
                         enum: [TODO, IN_PROGRESS, BLOCKED, DONE],
                       },
-                    beforeId: { type: [string, 'null'], format: uuid },
-                    afterId: { type: [string, 'null'], format: uuid },
+                    beforeId: { type: [string, "null"], format: uuid },
+                    afterId: { type: [string, "null"], format: uuid },
                   },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1016,9 +1225,10 @@ paths:
     get:
       summary: Read project decisions/conflicts and saved actions; optional meetingId restricts actions
       description: Decision timeline is ordered by source meeting start time, newest first. Evidence retains the matched transcript quote, speaker and offset when available; proposed plans remain distinct from confirmed decisions.
-      security: []
+      security:
+        - cookieAuth: []
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1039,8 +1249,11 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Confirm or dismiss with atomic project/version guards and audit history
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -1054,7 +1267,7 @@ paths:
                   { decision: { type: string, enum: [confirm, dismiss] } },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1075,8 +1288,11 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Confirm or dismiss with atomic project/version guards and audit history
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -1090,7 +1306,7 @@ paths:
                   { decision: { type: string, enum: [confirm, dismiss] } },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1111,8 +1327,11 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Read cached artifact or enqueue deduplicated draft generation; no external execution
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -1124,7 +1343,7 @@ paths:
                 properties: { retry: { type: boolean, default: false } },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1139,16 +1358,19 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Fill up to three saved draft suggestions from meeting evidence
       description: Initial BullMQ processing persists 2–3 grounded draft suggestions when evidence permits, in the same transaction as READY. Refresh fills remaining slots from saved facts without an OpenAI call; existing and dismissed suggestions count toward the cap and are never recreated.
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, additionalProperties: false }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1156,8 +1378,11 @@ paths:
           }
   /integrations/calendar/project:
     post:
+      parameters:
+        - $ref: "#/components/parameters/TrustedMutation"
       summary: Set an explicit project for new calendar imports
-      security: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -1170,7 +1395,7 @@ paths:
                 properties: { projectId: { type: string, format: uuid } },
               }
       responses:
-        '200':
+        "200":
           {
             description: Persisted result in a success envelope; validation errors return 400,
             missing records 404,
@@ -1178,15 +1403,22 @@ paths:
           }
 
 components:
+  parameters:
+    TrustedMutation:
+      in: header
+      name: x-meetflow-request
+      required: true
+      schema: { type: string, enum: ["1"] }
+      description: Required on every mutation for browser CSRF protection. Browser Origin must also be explicitly allowed.
   securitySchemes:
     cookieAuth:
       type: apiKey
       in: cookie
       name: meetflow_access_token
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    refreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: meetflow_refresh_token
 
   schemas:
     CompanyInput:
@@ -1195,13 +1427,13 @@ components:
       required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
-        description: { type: [string, 'null'], maxLength: 4000 }
+        description: { type: [string, "null"], maxLength: 4000 }
     CompanyPatch:
       type: object
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
-        description: { type: [string, 'null'], maxLength: 4000 }
+        description: { type: [string, "null"], maxLength: 4000 }
     ProjectInput:
       type: object
       additionalProperties: false
@@ -1209,7 +1441,7 @@ components:
       properties:
         companyId: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 200 }
-        description: { type: [string, 'null'], maxLength: 4000 }
+        description: { type: [string, "null"], maxLength: 4000 }
         status:
           { type: string, enum: [ACTIVE, PAUSED, ARCHIVED], default: ACTIVE }
     ProjectPatch:
@@ -1217,5 +1449,5 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
-        description: { type: [string, 'null'], maxLength: 4000 }
+        description: { type: [string, "null"], maxLength: 4000 }
         status: { type: string, enum: [ACTIVE, PAUSED, ARCHIVED] }

@@ -3,7 +3,7 @@ import { createRoute, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Skeleton } from '@meetflow/ui';
 import { rootRoute } from './root';
-import { API_BASE_URL } from '../lib/api-client';
+import { apiClient } from '../lib/api-client';
 interface PublicMeeting {
   title: string;
   startAt: string;
@@ -39,21 +39,11 @@ export function PublicMeetingPage() {
   const { token } = useParams({ from: '/share/$token' });
   const query = useQuery({
     queryKey: ['public-meeting', token],
-    queryFn: async ({ signal }) => {
-      const response = await fetch(
-        `${API_BASE_URL}/public/meetings/${encodeURIComponent(token)}`,
-        { credentials: 'omit', cache: 'no-store', signal },
-      ).catch(() => {
-        throw new Error('We couldn’t connect. Please try again.');
-      });
-      if (!response.ok)
-        throw new Error(
-          response.status === 404
-            ? 'This share link is unavailable, expired, or has been revoked.'
-            : 'We couldn’t load this meeting. Please try again.',
-        );
-      return (await response.json()).data as PublicMeeting;
-    },
+    queryFn: ({ signal }) =>
+      apiClient<PublicMeeting>(
+        `/public/meetings/${encodeURIComponent(token)}`,
+        { signal, cache: 'no-store' },
+      ),
     retry: false,
     gcTime: 0,
     refetchInterval: (query) => (query.state.error ? false : 30_000),

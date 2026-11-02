@@ -14,9 +14,12 @@ export function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setError(null);
     setErrors({});
 
     const validation = RegisterSchema.safeParse({
@@ -42,46 +45,74 @@ export function RegisterForm() {
 
     if (result.success) {
       toast.success('Account created! Welcome to MeetFlow.');
-      navigate({ to: '/onboarding' });
+      void navigate({ to: '/', replace: true });
     } else {
-      toast.error(result.error || 'Failed to create account');
+      setError(result.error || 'Failed to create account');
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3.5">
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      aria-busy={submitting}
+      className="space-y-3.5"
+    >
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive"
+        >
+          {error}
+        </p>
+      )}
       <div className="space-y-1">
         <label htmlFor="name" className="text-xs font-medium text-foreground">
           Full Name
         </label>
         <Input
           id="name"
+          autoComplete="name"
+          required
+          aria-invalid={Boolean(errors.name)}
           type="text"
           placeholder="Jibran"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className={`h-9 text-xs bg-card ${errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}`}
         />
-        {errors.name && <p className="text-[11px] text-destructive">{errors.name}</p>}
+        {errors.name && (
+          <p className="text-[11px] text-destructive">{errors.name}</p>
+        )}
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="reg-email" className="text-xs font-medium text-foreground">
+        <label
+          htmlFor="reg-email"
+          className="text-xs font-medium text-foreground"
+        >
           Work Email
         </label>
         <Input
           id="reg-email"
+          autoComplete="username"
+          required
+          aria-invalid={Boolean(errors.email)}
           type="email"
           placeholder="jibran@company.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={`h-9 text-xs bg-card ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
         />
-        {errors.email && <p className="text-[11px] text-destructive">{errors.email}</p>}
+        {errors.email && (
+          <p className="text-[11px] text-destructive">{errors.email}</p>
+        )}
       </div>
 
       <PasswordField
         id="reg-password"
+        autoComplete="new-password"
+        required
         label="Password (min 8 chars, 1 number)"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -90,6 +121,8 @@ export function RegisterForm() {
 
       <PasswordField
         id="confirm-password"
+        autoComplete="new-password"
+        required
         label="Confirm Password"
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -102,7 +135,9 @@ export function RegisterForm() {
         className="w-full h-9 text-xs font-semibold gap-2 shadow-xs mt-2"
       >
         {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-        <span>Create workspace account</span>
+        <span>
+          {submitting ? 'Creating admin account…' : 'Create admin account'}
+        </span>
       </Button>
     </form>
   );
