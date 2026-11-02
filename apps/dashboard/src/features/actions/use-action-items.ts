@@ -1,13 +1,20 @@
+import { useProjectContext } from '../projects/project-context';
 import { useQuery } from '@tanstack/react-query';
 import { ActionItemData } from '../../types/meeting';
 import { apiFetchActionItems } from '../meetings/meetings-api';
 import { workspaceScope } from '../meetings/use-meetings';
 
 export function useActionItemsQuery(meetingId?: string) {
+  const context = useProjectContext();
   return useQuery({
-    queryKey: ['action-items', workspaceScope(), meetingId ?? 'all'],
+    queryKey: [
+      'action-items',
+      workspaceScope(),
+      meetingId ?? 'all',
+      meetingId ? {} : context,
+    ],
     queryFn: ({ signal }) =>
-      apiFetchActionItems(meetingId ? { meetingId } : undefined, signal),
+      apiFetchActionItems(meetingId ? { meetingId } : context, signal),
     retry: false,
     gcTime: 300_000,
     staleTime: 30_000,

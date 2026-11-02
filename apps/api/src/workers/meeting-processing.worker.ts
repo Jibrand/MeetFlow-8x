@@ -1,4 +1,9 @@
 import '../env';
+import {
+  prepareExecution,
+  persistExecution,
+  generateArtifact,
+} from '../services/execution-intelligence';
 import { generateSummaryVariant } from '../services/summary-variants';
 import { processingTransaction } from '../services/processing-transaction';
 import { Worker, Job, UnrecoverableError } from 'bullmq';
@@ -147,6 +152,7 @@ export async function processMeetingIntelligence(
       ),
   });
 
+  const prepared = await prepareExecution(meeting.projectId, aiResult);
   await updateJobProgress(meetingId, 'ANALYZING', 75, 'RUNNING');
 
   // --- STAGE 3: SAVING STRUCTURED RESULTS & ACTION ITEMS (Progress 80-95%) ---
@@ -171,8 +177,16 @@ export async function processMeetingIntelligence(
   }
 
   await processingTransaction(async (tx) => {
+    await tx.project.update({
+      where: { id: meeting.projectId },
+      data: { updatedAt: new Date() },
+    });
     const claimed = await tx.meeting.updateMany({
-      where: { id: meetingId, processingStatus: 'FINALIZING' },
+      where: {
+        id: meetingId,
+        projectId: meeting.projectId,
+        processingStatus: 'FINALIZING',
+      },
       data: { processingStatus: 'FINALIZING' },
     });
     if (!claimed.count) {
@@ -206,33 +220,13 @@ export async function processMeetingIntelligence(
       },
     });
 
-    // The meeting row above serializes finalizers. Use set writes, never one round trip per task.
-    const existingActionItems = await tx.actionItem.findMany({
-      where: { meetingId },
-      select: { title: true },
-    });
-    const titles = new Set(
-      existingActionItems.map((item) => item.title.toLowerCase().trim()),
+    await persistExecution(
+      tx,
+      meeting,
+      aiResult,
+      parseResult.segments,
+      prepared,
     );
-    const freshItems = aiResult.actionItems.filter((item) => {
-      const key = item.title.toLowerCase().trim();
-      if (titles.has(key)) return false;
-      titles.add(key);
-      return true;
-    });
-    if (freshItems.length)
-      await tx.actionItem.createMany({
-        data: freshItems.map((item) => ({
-          workspaceId: meeting.workspaceId,
-          meetingId,
-          title: item.title,
-          description: item.description || null,
-          assigneeName: item.assigneeName || null,
-          dueDate: item.dueDate ? new Date(item.dueDate) : null,
-          status: 'TODO',
-          source: 'AI_EXTRACTED',
-        })),
-      });
     const existingPeople = await tx.meetingParticipant.findMany({
       where: { meetingId },
       select: { name: true },
@@ -371,7 +365,28 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
   const worker = new Worker<MeetingJobPayload>(
     MEETING_PROCESSING_QUEUE_NAME,
     async (job: Job<MeetingJobPayload>) => {
-      const { meetingId, summaryVariantId, generationId } = job.data;
+      const { meetingId, summaryVariantId, generationId, executionActionId } =
+        job.data;
+      if (executionActionId && generationId) {
+        try {
+          await generateArtifact(executionActionId, generationId);
+        } catch (error) {
+          if (job.attemptsMade >= (job.opts.attempts || 1) - 1)
+            await prisma.aIAction.updateMany({
+              where: {
+                id: executionActionId,
+                generationId,
+                status: { in: ['QUEUED', 'RUNNING'] },
+              },
+              data: {
+                status: 'FAILED',
+                error: 'Could not generate this artifact. Please retry.',
+              },
+            });
+          throw error;
+        }
+        return;
+      }
       if (summaryVariantId && generationId) {
         try {
           await generateSummaryVariant(summaryVariantId, generationId);

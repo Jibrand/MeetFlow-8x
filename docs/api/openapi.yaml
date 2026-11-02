@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: MeetFlow AI Backend API
-  version: 1.0.0
+  version: 2.0.0
   description: >
     Production-quality meeting intelligence engine API for MeetFlow AI.
-    Handles JWT authentication via HTTP-only cookies, workspace tenancy,
-    user profile management, and onboarding persistence backed by Neon PostgreSQL.
+    Single-admin, project-isolated meeting-to-execution APIs backed by Neon PostgreSQL.
+    Administrative routes require a trusted private deployment boundary; no login, invitations or RBAC.
 servers:
   - url: http://localhost:4000/api/v1
     description: Local Development Server (v1)
@@ -32,179 +32,16 @@ paths:
                   api: operational
                   database: connected
 
-  /auth/register:
-    post:
-      summary: Register User & Workspace
-      description: Validates input, hashes password, transactionally provisions user and workspace, and sets HTTP-only cookies.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, email, password]
-              properties:
-                name:
-                  type: string
-                  example: Sarah Connor
-                email:
-                  type: string
-                  format: email
-                  example: sarah@skynet.ai
-                password:
-                  type: string
-                  format: password
-                  example: Secret123!
-                workspaceName:
-                  type: string
-                  example: Tech Resistance
-      responses:
-        '201':
-          description: User and workspace created. Auth cookies set.
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-              description: meetflow_access_token and meetflow_refresh_token HTTP-only cookies.
-          content:
-            application/json:
-              example:
-                success: true
-                data:
-                  user:
-                    id: 'u-123'
-                    name: Sarah Connor
-                    email: sarah@skynet.ai
-                    avatarUrl: null
-                    role: MEMBER
-                  workspace:
-                    id: 'ws-123'
-                    name: Tech Resistance
-                    slug: tech-resistance-a1b2
-                    role: OWNER
-                  onboarding:
-                    completed: false
-                    currentStep: 1
-                meta:
-                  requestId: 'req-abc-123'
-                  timestamp: '2026-11-02T02:00:00.000Z'
-                  version: v1
-        '400':
-          description: Validation error.
-        '409':
-          description: Email already registered.
-
-  /auth/login:
-    post:
-      summary: Sign In
-      description: Authenticates user credentials, sets HTTP-only access and refresh cookies.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: sarah@skynet.ai
-                password:
-                  type: string
-                  format: password
-                  example: Secret123!
-      responses:
-        '200':
-          description: Authentication successful.
-        '401':
-          description: Invalid email or password.
-
-  /auth/refresh:
-    post:
-      summary: Rotate Refresh Token & Issue Access Token
-      description: Reads refresh token from HTTP-only cookie, rotates session token, and issues a new access token.
-      responses:
-        '200':
-          description: Tokens refreshed and cookies updated.
-        '401':
-          description: Invalid or expired refresh token.
-
-  /auth/logout:
-    post:
-      summary: Sign Out
-      description: Revokes active refresh session in database and clears authentication cookies.
-      responses:
-        '200':
-          description: Successfully signed out.
-
-  /auth/me:
-    get:
-      summary: Get Current Authenticated User & Workspace
-      description: Returns active user profile, workspace role, and onboarding progress.
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
-      responses:
-        '200':
-          description: User session details.
-        '401':
-          description: Authentication required.
-
-  /auth/forgot-password:
-    post:
-      summary: Initiate Password Reset
-      description: Generates a secure one-time reset token with 1-hour expiration.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email]
-              properties:
-                email:
-                  type: string
-                  format: email
-      responses:
-        '200':
-          description: Generic confirmation response.
-
-  /auth/reset-password:
-    post:
-      summary: Complete Password Reset
-      description: Validates one-time token, updates password hash, and invalidates all existing sessions.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token, newPassword]
-              properties:
-                token:
-                  type: string
-                newPassword:
-                  type: string
-                  format: password
-      responses:
-        '200':
-          description: Password reset successfully.
-        '400':
-          description: Invalid or expired reset token.
-
   /users/me:
     get:
       summary: Get Current User Profile
-      security:
-        - cookieAuth: []
+      security: []
       responses:
         '200':
           description: User profile.
     patch:
       summary: Update Personal Profile
-      security:
-        - cookieAuth: []
+      security: []
       requestBody:
         content:
           application/json:
@@ -220,16 +57,14 @@ paths:
   /workspaces/current:
     get:
       summary: Get Current Workspace
-      security:
-        - cookieAuth: []
+      security: []
       responses:
         '200':
           description: Workspace details and user membership role.
     patch:
       summary: Update Current Workspace
       description: Requires OWNER or ADMIN role.
-      security:
-        - cookieAuth: []
+      security: []
       requestBody:
         content:
           application/json:
@@ -247,79 +82,20 @@ paths:
         '403':
           description: Forbidden (insufficient role).
 
-  /onboarding:
-    get:
-      summary: Get Onboarding State
-      security:
-        - cookieAuth: []
-      responses:
-        '200':
-          description: Onboarding progress and persisted selections.
-    patch:
-      summary: Save Onboarding Selections
-      security:
-        - cookieAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                professionalRole:
-                  type: string
-                primaryUseCases:
-                  type: array
-                  items:
-                    type: string
-                currentStep:
-                  type: integer
-      responses:
-        '200':
-          description: Selections saved.
-
-  /onboarding/workspace:
-    post:
-      summary: Provision / Update Workspace during Onboarding
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [workspaceName]
-              properties:
-                workspaceName:
-                  type: string
-                orgName:
-                  type: string
-      responses:
-        '200':
-          description: Workspace configured and step advanced.
-
-  /onboarding/complete:
-    post:
-      summary: Mark Onboarding Completed
-      security:
-        - cookieAuth: []
-      responses:
-        '200':
-          description: Onboarding marked completed.
-
   /meetings:
     post:
       summary: Create Meeting & Optional Asynchronous Ingestion
-      security:
-        - cookieAuth: []
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [title, startAt]
+              required: [title, startAt, projectId]
               properties:
+                projectId: { type: string, format: uuid }
+                companyId: { type: string, format: uuid }
                 title: { type: string }
                 description: { type: string }
                 startAt: { type: string, format: date-time }
@@ -358,9 +134,10 @@ paths:
           description: Meeting is saved. With a transcript, queueStatus is QUEUED on dispatch or REDIS_UNAVAILABLE on failure; dispatch failure returns processingStatus FAILED (not a perpetually queued meeting).
     get:
       summary: List Workspace Meetings
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - { in: query, name: companyId, schema: { type: string, format: uuid } }
         - in: query
           name: status
           schema: { type: string }
@@ -404,8 +181,10 @@ paths:
   /meetings/overview:
     get:
       summary: Get Consolidated Overview Analytics
-      security:
-        - cookieAuth: []
+      security: []
+      parameters:
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - { in: query, name: companyId, schema: { type: string, format: uuid } }
       responses:
         '200':
           description: Aggregated real workspace KPI metrics, recent meetings with actionItemCount, and open attention tasks. Empty workspaces return zero counts and empty lists.
@@ -413,8 +192,7 @@ paths:
   /meetings/{id}:
     get:
       summary: Get Meeting Details
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -426,8 +204,7 @@ paths:
     patch:
       summary: Update Meeting Metadata
       description: Updates Neon metadata atomically. Omitted participants are retained; an explicit array replaces participants, including an empty array to remove all. Names are trimmed and must be unique case-insensitively.
-      security:
-        - cookieAuth: []
+      security: []
       requestBody:
         required: true
         content:
@@ -462,8 +239,7 @@ paths:
           description: Updated meeting record.
     delete:
       summary: Delete Meeting
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -476,8 +252,7 @@ paths:
   /meetings/{id}/transcript:
     post:
       summary: Upload Transcript to Existing Meeting
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -488,8 +263,7 @@ paths:
           description: Transcript saved. queueStatus is QUEUED or REDIS_UNAVAILABLE; a dispatch failure marks the persisted meeting and job FAILED.
     get:
       summary: Get Transcript and Segments
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -502,8 +276,7 @@ paths:
   /meetings/{id}/processing:
     get:
       summary: Poll Processing Status & Progress
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -516,8 +289,7 @@ paths:
   /meetings/{id}/reprocess:
     post:
       summary: Re-enqueue Meeting Processing
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -530,15 +302,16 @@ paths:
   /action-items:
     get:
       summary: List Workspace Action Items
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - { in: query, name: companyId, schema: { type: string, format: uuid } }
         - in: query
           name: meetingId
           schema: { type: string }
         - in: query
           name: status
-          schema: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+          schema: { type: string, enum: [TODO, IN_PROGRESS, BLOCKED, DONE] }
         - in: query
           name: search
           schema: { type: string }
@@ -547,8 +320,7 @@ paths:
           description: Workspace action items list.
     post:
       summary: Create Manual Action Item
-      security:
-        - cookieAuth: []
+      security: []
       requestBody:
         required: true
         content:
@@ -560,9 +332,18 @@ paths:
                 title: { type: string }
                 description: { type: string }
                 meetingId: { type: string }
+                projectId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Required for manual tasks without a source meeting.,
+                  }
+                priority:
+                  { type: string, enum: [LOW, MEDIUM, HIGH], default: MEDIUM }
                 assigneeName: { type: string }
                 dueDate: { type: string, format: date-time }
-                status: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+                status:
+                  { type: string, enum: [TODO, IN_PROGRESS, BLOCKED, DONE] }
       responses:
         '201':
           description: Action item created.
@@ -570,8 +351,7 @@ paths:
   /action-items/{id}:
     patch:
       summary: Update Action Item
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -582,8 +362,7 @@ paths:
           description: Action item updated.
     delete:
       summary: Delete Action Item
-      security:
-        - cookieAuth: []
+      security: []
       parameters:
         - in: path
           name: id
@@ -597,7 +376,7 @@ paths:
     post:
       summary: Ask about real workspace meeting content
       description: Retrieves bounded workspace sources and calls the environment-configured OpenAI model. Citations reference stored summaries, segments or action items. Maximum 20 questions per user per minute.
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -606,6 +385,12 @@ paths:
               type: object
               required: [question]
               properties:
+                projectId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Required unless meetingId supplies the project.,
+                  }
                 question: { type: string, minLength: 1, maxLength: 2000 }
                 meetingId: { type: string, format: uuid }
                 history:
@@ -636,7 +421,7 @@ paths:
   /meetings/media:
     post:
       summary: Upload private audio or video and enqueue transcription
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -654,7 +439,7 @@ paths:
                 metadata:
                   {
                     type: string,
-                    description: JSON-encoded Create Meeting metadata (title/startAt and optional participants/timezone/description).,
+                    description: JSON-encoded Create Meeting metadata with required projectId/title/startAt and optional companyId/participants/timezone/description.,
                   }
       responses:
         '201':
@@ -669,7 +454,7 @@ paths:
   /meetings/{id}/media:
     get:
       summary: Stream a workspace meeting's private recording
-      security: [{ cookieAuth: [] }]
+      security: []
       parameters:
         - in: path
           name: id
@@ -686,7 +471,7 @@ paths:
   /integrations/calendar:
     get:
       summary: Get current user's Google Calendar connection status
-      security: [{ cookieAuth: [] }]
+      security: []
       responses:
         '200':
           {
@@ -699,7 +484,7 @@ paths:
   /integrations/calendar/authorize:
     post:
       summary: Start Google Calendar read-only OAuth consent
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -731,7 +516,7 @@ paths:
     post:
       summary: Import primary Google Calendar events into Neon
       description: Initial window is one year before/after today; subsequent syncs use an incremental cursor. Expired cursors trigger a full refresh. Cancellations retain meeting notes. Concurrent sync is guarded by a lease.
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -744,7 +529,7 @@ paths:
   /integrations/calendar/disconnect:
     post:
       summary: Revoke Google authorization and remove stored connection
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -765,7 +550,7 @@ paths:
         }
     get:
       summary: List persisted meeting highlights
-      security: [{ cookieAuth: [] }]
+      security: []
       responses:
         '200':
           {
@@ -778,7 +563,7 @@ paths:
         '404': { description: Meeting unavailable in the current workspace. }
     post:
       summary: Create a persisted meeting highlight
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -812,7 +597,7 @@ paths:
         }
     patch:
       summary: Update supplied highlight fields within the current workspace
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -831,7 +616,7 @@ paths:
         '404': { description: Highlight or workspace meeting not found. }
     delete:
       summary: Soft-delete a highlight, retaining its processing tombstone
-      security: [{ cookieAuth: [] }]
+      security: []
       responses:
         '200': { description: Idempotent deleted outcome. }
 
@@ -845,7 +630,7 @@ paths:
         }
     get:
       summary: Read workspace-authorized sharing management state
-      security: [{ cookieAuth: [] }]
+      security: []
       responses:
         '200':
           {
@@ -854,7 +639,7 @@ paths:
           }
     post:
       summary: Enable, disable, update, regenerate or revoke a public capability
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -935,7 +720,7 @@ paths:
         }
     get:
       summary: Read a persisted summary type and generation state
-      security: [{ cookieAuth: [] }]
+      security: []
       responses:
         '200':
           {
@@ -944,7 +729,7 @@ paths:
           }
     post:
       summary: Enqueue missing summary generation without duplicating existing work
-      security: [{ cookieAuth: [] }]
+      security: []
       requestBody:
         required: true
         content:
@@ -962,6 +747,434 @@ paths:
         '409':
           { description: Process this meeting before generating a summary. }
 
+  /auth/me:
+    get:
+      summary: Read the single-admin instance identity (compatibility metadata, no login/session)
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /companies:
+    get:
+      summary: List companies and their projects
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+    post:
+      summary: Create a company
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyInput' }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /companies/{id}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      summary: Update supplied company metadata
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyPatch' }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+    delete:
+      summary: Delete an empty company (linked projects are restricted)
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects:
+    post:
+      summary: Create a project under an explicit company ID
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      summary: Update project metadata/status; explicit ACTIVE acknowledges review assignment
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectPatch' }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+    delete:
+      summary: Delete an empty project; execution history is restricted
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /meetings/{id}/project:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Explicitly reassign a meeting and its owned records when no cross-meeting history exists
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [projectId, companyId],
+                properties:
+                  {
+                    projectId: { type: string, format: uuid },
+                    companyId: { type: string, format: uuid },
+                  },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/board:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - { in: query, name: search, schema: { type: string, maxLength: 200 } }
+      - { in: query, name: owner, schema: { type: string } }
+      - {
+          in: query,
+          name: priority,
+          schema: { type: string, enum: [LOW, MEDIUM, HIGH] },
+        }
+      - {
+          in: query,
+          name: archived,
+          schema: { type: string, enum: ['true', 'false'] },
+        }
+    get:
+      summary: Read project tasks, database counts and distinct owner names; capped at 1000 with truncated flag
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/tasks/{taskId}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: taskId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      summary: Read project task details, source evidence and most recent 100 history events
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/tasks/{taskId}/{operation}:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: taskId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: operation,
+          required: true,
+          schema: { type: string, enum: [move, duplicate, archive, restore] },
+        }
+    post:
+      summary: Move/reorder the canonical task or duplicate/archive/restore; move requires version
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                properties:
+                  {
+                    version: { type: integer, minimum: 0 },
+                    status:
+                      {
+                        type: string,
+                        enum: [TODO, IN_PROGRESS, BLOCKED, DONE],
+                      },
+                    beforeId: { type: [string, 'null'], format: uuid },
+                    afterId: { type: [string, 'null'], format: uuid },
+                  },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/intelligence:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - { in: query, name: meetingId, schema: { type: string, format: uuid } }
+      - { in: query, name: search, schema: { type: string, maxLength: 200 } }
+    get:
+      summary: Read project decisions/conflicts and saved actions; optional meetingId restricts actions
+      security: []
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/conflicts/{conflictId}/review:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: conflictId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Confirm or dismiss with atomic project/version guards and audit history
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [decision],
+                properties:
+                  { decision: { type: string, enum: [confirm, dismiss] } },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/ai-actions/{actionId}/review:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: actionId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Confirm or dismiss with atomic project/version guards and audit history
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [decision],
+                properties:
+                  { decision: { type: string, enum: [confirm, dismiss] } },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /projects/{id}/ai-actions/{actionId}/generate:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - {
+          in: path,
+          name: actionId,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Read cached artifact or enqueue deduplicated draft generation; no external execution
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                properties: { retry: { type: boolean, default: false } },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /meetings/{id}/suggestions/refresh:
+    parameters:
+      - {
+          in: path,
+          name: id,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Add deterministic saved-fact alternatives, excluding existing and dismissed suggestions
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+  /integrations/calendar/project:
+    post:
+      summary: Set an explicit project for new calendar imports
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [projectId],
+                properties: { projectId: { type: string, format: uuid } },
+              }
+      responses:
+        '200':
+          {
+            description: Persisted result in a success envelope; validation errors return 400,
+            missing records 404,
+            stale versions or linked history 409.,
+          }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -972,3 +1185,35 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  schemas:
+    CompanyInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+    CompanyPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+    ProjectInput:
+      type: object
+      additionalProperties: false
+      required: [name, companyId]
+      properties:
+        companyId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+        status:
+          { type: string, enum: [ACTIVE, PAUSED, ARCHIVED], default: ACTIVE }
+    ProjectPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+        status: { type: string, enum: [ACTIVE, PAUSED, ARCHIVED] }

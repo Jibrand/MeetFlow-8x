@@ -1,3 +1,5 @@
+import { requireProject } from '../projects/projects.routes';
+import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../lib/prisma';
@@ -26,6 +28,8 @@ export class MeetingsController {
       const userId = req.user!.userId;
       const input = CreateMeetingSchema.parse(req.body);
 
+      const project=await requireProject(input.projectId, input.companyId);
+      if(project.status==='ARCHIVED')throw Object.assign(new Error('Choose an active project before creating a meeting.'),{status:409});
       const hasTranscript = Boolean(
         input.transcript && input.transcript.rawText.trim(),
       );
@@ -34,6 +38,7 @@ export class MeetingsController {
         const created = await tx.meeting.create({
           data: {
             workspaceId,
+            projectId: input.projectId,
             createdById: userId,
             title: input.title,
             description: input.description,
@@ -52,6 +57,7 @@ export class MeetingsController {
             },
           },
           include: {
+            project: { include: { company: true } },
             participants: true,
           },
         });
@@ -115,6 +121,19 @@ export class MeetingsController {
     try {
       const workspaceId = req.workspaceId!;
       const now = new Date();
+      const scope = z
+        .object({
+          projectId: z.string().uuid().optional(),
+          companyId: z.string().uuid().optional(),
+        })
+        .parse(req.query);
+      if (scope.projectId)
+        await requireProject(scope.projectId, scope.companyId);
+      const scopeWhere = scope.projectId
+        ? { projectId: scope.projectId }
+        : scope.companyId
+          ? { project: { companyId: scope.companyId } }
+          : {};
 
       const [
         totalMeetings,
@@ -126,33 +145,50 @@ export class MeetingsController {
         attentionItems,
         durationTotals,
       ] = await Promise.all([
-        prisma.meeting.count({ where: { workspaceId } }),
+        prisma.meeting.count({ where: { workspaceId, ...scopeWhere } }),
         prisma.meeting.count({
           where: {
             workspaceId,
+            ...scopeWhere,
             processingStatus: {
               in: ['READY', 'QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'],
             },
           },
         }),
         prisma.actionItem.count({
-          where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
-        }),
-        prisma.actionItem.count({
-          where: { workspaceId, status: 'DONE' },
+          where: {
+            workspaceId,
+            ...scopeWhere,
+            deletedAt: null,
+            archivedAt: null,
+            status: { in: ['TODO', 'IN_PROGRESS', 'BLOCKED'] },
+          },
         }),
         prisma.actionItem.count({
           where: {
             workspaceId,
-            status: { in: ['TODO', 'IN_PROGRESS'] },
+            ...scopeWhere,
+            deletedAt: null,
+            archivedAt: null,
+            status: 'DONE',
+          },
+        }),
+        prisma.actionItem.count({
+          where: {
+            workspaceId,
+            ...scopeWhere,
+            deletedAt: null,
+            archivedAt: null,
+            status: { in: ['TODO', 'IN_PROGRESS', 'BLOCKED'] },
             dueDate: { lt: now },
           },
         }),
         prisma.meeting.findMany({
-          where: { workspaceId },
+          where: { workspaceId, ...scopeWhere },
           orderBy: { startAt: 'desc' },
           take: 5,
           include: {
+            project: { include: { company: true } },
             participants: true,
             summary: {
               select: { overview: true },
@@ -163,7 +199,13 @@ export class MeetingsController {
           },
         }),
         prisma.actionItem.findMany({
-          where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
+          where: {
+            workspaceId,
+            ...scopeWhere,
+            deletedAt: null,
+            archivedAt: null,
+            status: { in: ['TODO', 'IN_PROGRESS', 'BLOCKED'] },
+          },
           orderBy: { dueDate: 'asc' },
           take: 5,
           include: {
@@ -173,7 +215,7 @@ export class MeetingsController {
           },
         }),
         prisma.meeting.aggregate({
-          where: { workspaceId },
+          where: { workspaceId, ...scopeWhere },
           _sum: { durationSeconds: true },
         }),
       ]);
@@ -222,7 +264,16 @@ export class MeetingsController {
       const workspaceId = req.workspaceId!;
       const query = ListMeetingsQuerySchema.parse(req.query);
 
-      const where: Prisma.MeetingWhereInput = { workspaceId };
+      const where: Prisma.MeetingWhereInput = {
+        workspaceId,
+        ...(query.projectId
+          ? { projectId: query.projectId }
+          : query.companyId
+            ? { project: { companyId: query.companyId } }
+            : {}),
+      };
+      if (query.projectId)
+        await requireProject(query.projectId, query.companyId);
 
       if (query.status) {
         where.meetingStatus = query.status;
@@ -285,6 +336,7 @@ export class MeetingsController {
                   { id: 'desc' },
                 ],
         include: {
+          project: { include: { company: true } },
           participants: true,
           summary: {
             select: {
@@ -325,6 +377,8 @@ export class MeetingsController {
             sourceType: m.sourceType,
             durationSeconds: m.durationSeconds,
             recordingUrl: m.recordingUrl,
+            projectId: m.projectId,
+            project: m.project,
             participants: m.participants,
             summary: m.summary,
             actionItemCount: m._count.actionItems,
@@ -367,6 +421,7 @@ export class MeetingsController {
       const meeting = await prisma.meeting.findFirst({
         where: { id, workspaceId },
         include: {
+          project: { include: { company: true } },
           participants: true,
           transcripts: {
             orderBy: { createdAt: 'desc' },
@@ -379,8 +434,10 @@ export class MeetingsController {
               createdAt: true,
             },
           },
+          commitments: { include: { actionItem: true } },
           summary: true,
           actionItems: {
+            where: { deletedAt: null, archivedAt: null },
             orderBy: { createdAt: 'asc' },
           },
           segments: {
@@ -411,7 +468,20 @@ export class MeetingsController {
 
       res.status(200).json({
         success: true,
-        data: { ...meeting, mediaStorageKey: undefined },
+        data: {
+          ...meeting,
+          actionItems: [
+            ...new Map(
+              [
+                ...meeting.actionItems,
+                ...meeting.commitments.map((h) => h.actionItem),
+              ]
+                .filter((t) => !t.deletedAt && !t.archivedAt)
+                .map((t) => [t.id, t]),
+            ).values(),
+          ],
+          mediaStorageKey: undefined,
+        },
         meta: {
           requestId: req.id,
           timestamp: new Date().toISOString(),
@@ -483,6 +553,7 @@ export class MeetingsController {
             : {}),
         },
         include: {
+          project: { include: { company: true } },
           participants: true,
         },
       });

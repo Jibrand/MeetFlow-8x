@@ -1,3 +1,4 @@
+import { useProjectContext } from '../projects/project-context';
 import { PageSkeleton } from '../../components/page-skeleton';
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
@@ -30,11 +31,12 @@ import {
 import { AddMeetingDialog } from '../meetings/add-meeting-dialog';
 
 export function OverviewView() {
+  const context = useProjectContext();
   const taskToggle = useToggleActionItem();
   const now = React.useMemo(() => new Date(), []);
   const stats = useQuery({
-    queryKey: ['overview', workspaceScope()],
-    queryFn: ({ signal }) => apiFetchOverviewStats(signal),
+    queryKey: ['overview', workspaceScope(), context],
+    queryFn: ({ signal }) => apiFetchOverviewStats(signal, context),
     retry: false,
     gcTime: 300_000,
     staleTime: 30_000,

@@ -1,25 +1,14 @@
 # MeetFlow AI — API Reference & Architectural Guide
 
-## 1. Overview & Architectural Principles
+## 1. Single-admin execution architecture
 
-MeetFlow AI's backend is built on **Node.js, Express.js (Native ES Modules), TypeScript, Prisma ORM, and Neon PostgreSQL**.
+This phase intentionally replaces account login/onboarding with one persisted instance context. There are no login, registration, invitations, role checks or multi-user workflows. Historical identity/workspace rows remain as provenance; the migration consolidates operational meeting/task ownership into the instance context without deleting those identities. GET /auth/me is a compatibility metadata read only. Legacy authentication mutation endpoints are not mounted.
 
-All client-facing endpoints are namespaced under the versioned prefix:
-```
-/api/v1
-```
-(with root aliases mounted at `/api` for convenience).
+The administrative API is a trusted private-instance API, not an anonymous public SaaS API. The server binds to 127.0.0.1 by default (HOST can be configured). Keep administrative routes behind the deployment’s private-network/reverse-proxy boundary; expose only intended public-share routes externally. Public-share capability and field-permission enforcement remain separate and unchanged.
 
-### Key Architectural Guidelines
-- **Transactional Tenancy**: Registration provisions both the User and an initial Workspace with `OWNER` membership in a single atomic transaction.
-- **Stateless Access, Stateful Sessions**:
-  - **Access Tokens**: Short-lived (15 minutes), signed via JWT, transported inside `httpOnly`, `SameSite=Lax` cookies (`meetflow_access_token`).
-  - **Refresh Tokens**: Opaque 32-byte cryptographically secure random tokens, hashed via SHA-256 before storage in Neon PostgreSQL (`auth_sessions`), rotated on each refresh, and transported via `httpOnly` cookie (`meetflow_refresh_token`).
-- **Never Expose Tokens to JavaScript**: No tokens or sensitive user credentials are saved in `localStorage` or `sessionStorage`.
-- **Strict Input Validation**: Every endpoint validates incoming payloads against typed Zod schemas.
-- **Background Job Execution**: Transcripts are processed asynchronously via BullMQ + Redis workers. Meeting records in Neon act as the durable single source of truth.
+Company → Project → Meeting → canonical tasks, decisions and AI actions. Project IDs are explicitly selected and validated; no project association is inferred by AI, titles or people. Prisma foreign keys, project indexes, unique extraction keys and additional composite project foreign keys protect cross-record integrity. Decisions and cross-meeting audit records restrict destructive deletion; task deletion is soft and archive/restore are supported.
 
----
+Background transcript extraction uses the existing OpenAI/BullMQ pipeline. It now returns structured commitments, decisions, exact evidence and suggested draft actions in the initial extraction. Deterministic title/owner/date matching runs first, only within the selected project. A bounded semantic call is used only for ambiguous candidates and cannot introduce arbitrary IDs. Uncertain matches remain unapplied. All provider work stays outside short database transactions.
 
 ## 2. Standardized API Envelopes
 
@@ -65,37 +54,60 @@ All client-facing endpoints are namespaced under the versioned prefix:
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
 | `GET` | `/api/health` | No | Operational uptime & database connectivity check |
-| `POST` | `/api/v1/auth/register` | No | Register new user, workspace, and establish session |
-| `POST` | `/api/v1/auth/login` | No | Verify credentials, issue access & refresh cookies |
-| `POST` | `/api/v1/auth/refresh` | Cookie | Rotate refresh token and issue fresh access token |
-| `POST` | `/api/v1/auth/logout` | Cookie | Revoke persistent session in database and clear cookies |
-| `GET` | `/api/v1/auth/me` | Yes | Get active user profile, workspace role, and onboarding state |
-| `POST` | `/api/v1/auth/forgot-password` | No | Initiate password reset token (1 hr expiry) |
-| `POST` | `/api/v1/auth/reset-password` | No | Reset password using one-time verification token |
-| `GET` | `/api/v1/users/me` | Yes | Get profile details for authenticated user |
-| `PATCH` | `/api/v1/users/me` | Yes | Update profile name |
-| `GET` | `/api/v1/workspaces/current` | Yes | Get active workspace metadata & members count |
-| `PATCH` | `/api/v1/workspaces/current` | Yes (Owner/Admin) | Update workspace name and organization details |
-| `GET` | `/api/v1/onboarding` | Yes | Fetch persisted onboarding progress |
-| `PATCH` | `/api/v1/onboarding` | Yes | Save professional role, use cases, and current step |
-| `POST` | `/api/v1/onboarding/workspace` | Yes | Provision or configure workspace during onboarding |
-| `POST` | `/api/v1/onboarding/complete` | Yes | Mark onboarding completed |
-| `POST` | `/api/v1/meetings` | Yes (Workspace) | Create meeting, optionally attach transcript & enqueue processing |
-| `GET` | `/api/v1/meetings` | Yes (Workspace) | List workspace meetings with pagination, status & search filters |
-| `GET` | `/api/v1/meetings/overview` | Yes (Workspace) | Overview dashboard analytics and KPI aggregations |
-| `GET` | `/api/v1/meetings/:id` | Yes (Workspace) | Fetch comprehensive meeting intelligence, summary & segments |
-| `PATCH` | `/api/v1/meetings/:id` | Yes (Workspace) | Update meeting metadata, title, times, or lifecycle status |
-| `DELETE` | `/api/v1/meetings/:id` | Yes (Workspace) | Delete meeting and cascading segments/jobs |
-| `POST` | `/api/v1/meetings/:id/transcript` | Yes (Workspace) | Upload transcript and trigger asynchronous processing |
-| `GET` | `/api/v1/meetings/:id/transcript` | Yes (Workspace) | Get raw transcript and parsed turns |
-| `GET` | `/api/v1/meetings/:id/processing` | Yes (Workspace) | Poll live background processing status, stage, and progress (0-100%) |
-| `POST` | `/api/v1/meetings/:id/reprocess` | Yes (Workspace) | Re-enqueue transcript processing idempotently |
-| `GET` | `/api/v1/action-items` | Yes (Workspace) | List workspace action items with status & search filters |
-| `POST` | `/api/v1/action-items` | Yes (Workspace) | Create manual action item |
-| `PATCH` | `/api/v1/action-items/:id` | Yes (Workspace) | Update action item status (TODO, IN_PROGRESS, DONE) and metadata |
-| `DELETE` | `/api/v1/action-items/:id` | Yes (Workspace) | Delete action item |
+| `GET` | `/api/v1/auth/me` | Instance | Get active user profile, workspace role, and onboarding state |
+| `GET` | `/api/v1/users/me` | Instance | Get profile details for authenticated user |
+| `PATCH` | `/api/v1/users/me` | Instance | Update profile name |
+| `GET` | `/api/v1/workspaces/current` | Instance | Get active workspace metadata & members count |
+| `PATCH` | `/api/v1/workspaces/current` | Instance | Update workspace name and organization details |
+| `POST` | `/api/v1/meetings` | Instance | Create meeting, optionally attach transcript & enqueue processing |
+| `GET` | `/api/v1/meetings` | Instance | List workspace meetings with pagination, status & search filters |
+| `GET` | `/api/v1/meetings/overview` | Instance | Overview dashboard analytics and KPI aggregations |
+| `GET` | `/api/v1/meetings/:id` | Instance | Fetch comprehensive meeting intelligence, summary & segments |
+| `PATCH` | `/api/v1/meetings/:id` | Instance | Update meeting metadata, title, times, or lifecycle status |
+| `DELETE` | `/api/v1/meetings/:id` | Instance | Delete meeting and cascading segments/jobs |
+| `POST` | `/api/v1/meetings/:id/transcript` | Instance | Upload transcript and trigger asynchronous processing |
+| `GET` | `/api/v1/meetings/:id/transcript` | Instance | Get raw transcript and parsed turns |
+| `GET` | `/api/v1/meetings/:id/processing` | Instance | Poll live background processing status, stage, and progress (0-100%) |
+| `POST` | `/api/v1/meetings/:id/reprocess` | Instance | Re-enqueue transcript processing idempotently |
+| `GET` | `/api/v1/action-items` | Instance | List workspace action items with status & search filters |
+| `POST` | `/api/v1/action-items` | Instance | Create manual action item |
+| `PATCH` | `/api/v1/action-items/:id` | Instance | Update action item status (TODO, IN_PROGRESS, DONE) and metadata |
+| `DELETE` | `/api/v1/action-items/:id` | Instance | Delete action item |
 
 ---
+
+## Project/execution API additions
+
+All paths below are under /api/v1 and use the single-admin instance context.
+
+| Method | Path | Behavior |
+| :--- | :--- | :--- |
+| GET / POST | /companies | List nested projects / create company. |
+| PATCH / DELETE | /companies/:id | Update metadata / delete only when empty. |
+| POST | /projects | Create with explicit companyId and name. |
+| PATCH / DELETE | /projects/:id | Update name/description/status / delete only when unreferenced. Explicit ACTIVE acknowledges review assignment. |
+| POST | /meetings/:id/project | Explicit companyId/projectId reassignment. Processing or cross-meeting audit links block unsafe moves. |
+| GET | /projects/:id/board | Database-filtered search/owner/priority/archive view, counts and owner choices. Up to 1,000 cards; truncated is explicit. |
+| GET | /projects/:id/tasks/:taskId | Task, source evidence, source meeting and latest 100 activity events. |
+| POST | /projects/:id/tasks/:taskId/:operation | move, duplicate, archive or restore. Move requires version and accepts status/beforeId/afterId. Anchors are validated within the destination project/status. Ordering is persisted and tightly spaced ranks are rebalanced atomically. |
+| GET | /projects/:id/intelligence | Project decisions/conflicts/actions; optional meetingId restricts actions and search filters decisions. Bounded history reads protect request cost. |
+| POST | /projects/:id/conflicts/:conflictId/review | decision=confirm or dismiss. Confirm preserves originals, records events, and marks the prior decision superseded. |
+| POST | /projects/:id/ai-actions/:actionId/review | Confirm or dismiss a supported commitment proposal. Project and expected task version must match. Confirmation/dismissal and evidence enter the task history. |
+| POST | /projects/:id/ai-actions/:actionId/generate | Reuse generatedContent or enqueue deduplicated BullMQ draft generation. retry=true explicitly retries failure. Never sends mail or executes external actions. |
+| POST | /meetings/:id/suggestions/refresh | Deterministic alternatives from saved facts; existing/dismissed keys and repeated definitions are excluded. |
+| POST | /integrations/calendar/project | Persist the selected project for new Google Calendar imports. No title/participant matching or implicit project assignment. |
+
+Meeting creation (JSON or media metadata) now requires projectId; companyId, when supplied, must own that project. The UI requires both selections and remembers them locally. Meeting lists and overview accept projectId/companyId; Calendar shares that context. Ask requires an explicit project or a meeting whose project is derived server-side. Its source queries never cross projects.
+
+Action Items and Kanban use the SAME action_items rows. Manual creation requires projectId unless derived from an explicit same-project meetingId. Fields include description, owner name, priority LOW/MEDIUM/HIGH, deadline, TODO/IN_PROGRESS/BLOCKED/DONE, evidence, ordering, archive/deletion state and version. PATCH edits supplied fields with a compare-and-swap version; DELETE preserves audit history while hiding the task. Database status counts exclude archived/deleted rows. Mutations invalidate board/detail/action/dashboard caches; optimistic changes are project-aware and roll back on conflict.
+
+Follow-up proposals never silently update an existing task. Exact normalized deliverable/owner matches are preferred; date/identifier information narrows candidates, ambiguous comparisons are bounded to project tasks, and quoted evidence must be grounded in transcript segments. Completion/blocker/deadline/delay changes need confirmation. Repeated mentions link history rather than duplicate tasks. Original decision statements/evidence are retained; conflicts represent possible relationships requiring review, not automatic truth claims.
+
+### Migration and development phase
+
+Run pnpm --filter @meetflow/api exec tsx scripts/apply-project-schema.ts and pnpm --filter @meetflow/api exec prisma generate. The project migration is transactional and was applied to the configured Neon database without a reset. It creates clearly labelled legacy-import companies and ONE review project per historical meeting, plus review buckets for orphan/manual tasks. It never guesses that unrelated old meetings share a real project. Review flags disable cross-meeting matching until explicit assignment. Previously saved decisions are imported as saved-summary evidence, not fabricated transcript quotes. Reassignment is explicit and foreign-key guarded. Use the checked-in migration/runner rather than destructive schema resets; composite isolation constraints are intentionally represented in SQL as well as ordinary Prisma relations.
+
+No unit, integration or E2E tests were written/run and no test datasets were created in this phase. Only migration/client generation, TypeScript and production-build compilation are in scope. Production TypeScript excludes test files; existing account/project fixtures and mock boundaries belong to the separately requested verification phase. Live AI matching, sequential-meeting scenarios, drag/drop and full regression behavior are not claimed verified here.
 
 ## 4. OpenAPI 3.1 Specification
 
@@ -105,7 +117,7 @@ All client-facing endpoints are namespaced under the versioned prefix:
 | :--- | :--- | :--- |
 | GET / POST | `/meetings/:id/highlights` | Workspace-authorized list/create. Fields: label (required on create, max 255), quote (max 30,000), tag (max 100), nullable nonnegative startTime in seconds. Returns persisted UUIDs and hasTimestamp. |
 | PATCH / DELETE | `/meetings/:id/highlights/:highlightId` | Edit supplied fields or soft-delete. Deleted quotes are retained as tombstones so processing retries do not resurrect them. |
-| GET | `/meetings/:id/sharing` | Authenticated workspace sharing state and capability token. Never cache/share this management response publicly. |
+| GET | `/meetings/:id/sharing` | Instance/project sharing state and capability token. Never cache/share this management response publicly. |
 | POST | `/meetings/:id/sharing` | `{action, permissions?}`; action is enable, disable, regenerate, revoke or update. Permissions are allowSummary, allowHighlights, allowActions, allowTranscript booleans. Transcript defaults off. |
 | GET | `/public/meetings/:token` | Anonymous, rate-limited, read-only allowlisted DTO. Requires an enabled, unexpired 256-bit random capability. Invalid/revoked links return 404. No workspace IDs, member emails, private file URLs, recordings or private controls are exposed. |
 | GET / POST | `/meetings/:id/summaries/:type` | type: general, executive, engineering, product, sales or interview. GET reads persisted content/status. POST enqueues only missing/stale content; `{retry:true}` explicitly retries a failed generation. |
@@ -124,8 +136,8 @@ Apply the additive `20261102100000_meeting_collaboration` migration through `scr
 
 | Method | Path (under `/api/v1`) | Behavior |
 | :--- | :--- | :--- |
-| POST | `/ask` | Authenticated workspace retrieval and live OpenAI answer; optional meetingId and up to ten history messages. Returns actual stored citations and bounded retrieval scope. Twenty requests/user/minute. |
-| POST | `/meetings/media` | Authenticated multipart `file` and JSON-encoded `metadata` matching Create Meeting fields. Maximum 512 MiB, five uploads/user/minute; saves privately and queues the existing worker. |
+| POST | `/ask` | Instance/project retrieval and live OpenAI answer; optional meetingId and up to ten history messages. Returns actual stored citations and bounded retrieval scope. Twenty requests/user/minute. |
+| POST | `/meetings/media` | Instance multipart `file` and JSON-encoded `metadata` matching Create Meeting fields. Maximum 512 MiB, five uploads/user/minute; saves privately and queues the existing worker. |
 | GET | `/meetings/:id/media` | Workspace-authorized private media streaming with range support. |
 | GET | `/integrations/calendar` | User/workspace connection status, configuration readiness, last sync, safe errors. Never returns tokens. |
 | POST | `/integrations/calendar/authorize` | Empty JSON object; returns Google consent URL and sets signed state/PKCE cookie. |

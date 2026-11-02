@@ -1,4 +1,8 @@
-import { createRouter, createRoute } from '@tanstack/react-router';
+import * as React from 'react';
+import { createRouter, createRoute, redirect } from '@tanstack/react-router';
+import { ManagementView } from './features/projects/management-view';
+import { BoardView } from './features/projects/board-view';
+import { IntelligenceView } from './features/projects/intelligence-view';
 import { publicMeetingRoute } from './routes/public-meeting';
 import { rootRoute } from './routes/root';
 import { indexRoute, MeetingsPage } from './routes/index';
@@ -9,10 +13,6 @@ import { actionsRoute } from './routes/actions';
 import { calendarRoute } from './routes/calendar';
 import { askRoute } from './routes/ask';
 import { settingsRoute } from './routes/settings';
-import { loginRoute } from './routes/login';
-import { registerRoute } from './routes/register';
-import { forgotPasswordRoute } from './routes/forgot-password';
-import { onboardingRoute } from './routes/onboarding';
 
 // /meetings route acts as an alias to the main MeetingsPage library
 const meetingsRoute = createRoute({
@@ -21,6 +21,42 @@ const meetingsRoute = createRoute({
   component: MeetingsPage,
 });
 
+const legacyRoutes = (
+  ['/login', '/register', '/forgot-password', '/onboarding'] as const
+).map((path) =>
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    beforeLoad: () => {
+      throw redirect({ to: '/' });
+    },
+  }),
+);
+const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects',
+  component: ManagementView,
+});
+const boardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/board',
+  component: BoardView,
+});
+const decisionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/decisions',
+  component: () => React.createElement(IntelligenceView),
+});
+const followupsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/followups',
+  component: () => React.createElement(IntelligenceView, { mode: 'followups' }),
+});
+const aiActionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-actions',
+  component: () => React.createElement(IntelligenceView, { mode: 'actions' }),
+});
 const routeTree = rootRoute.addChildren([
   publicMeetingRoute,
   indexRoute,
@@ -32,10 +68,12 @@ const routeTree = rootRoute.addChildren([
   askRoute,
   settingsRoute,
   designRoute,
-  loginRoute,
-  registerRoute,
-  forgotPasswordRoute,
-  onboardingRoute,
+  ...legacyRoutes,
+  projectsRoute,
+  boardRoute,
+  decisionsRoute,
+  followupsRoute,
+  aiActionsRoute,
 ]);
 
 export const router = createRouter({

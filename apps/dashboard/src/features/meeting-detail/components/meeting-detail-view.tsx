@@ -1,3 +1,5 @@
+import { MeetingExecutionPanel } from '../../projects/intelligence-view';
+import { ProjectBreadcrumb } from '../../projects/project-breadcrumb';
 import * as React from 'react';
 import { useHighlights, useSummaryVariant } from '../use-collaboration';
 import { useQueryClient } from '@tanstack/react-query';
@@ -244,6 +246,7 @@ export function MeetingDetailView({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      {meeting.project && <ProjectBreadcrumb meeting={meeting} />}
       {/* 1. Meeting Header */}
       <MeetingHeader
         meeting={meeting}
@@ -395,6 +398,12 @@ export function MeetingDetailView({
 
         {/* Right Column (Approx 35%) */}
         <div className="lg:col-span-4 space-y-5">
+          {meeting.projectId && (
+            <MeetingExecutionPanel
+              meetingId={meeting.id}
+              projectId={meeting.projectId}
+            />
+          )}
           {/* Highlights & Moments Panel */}
           <HighlightsPanel
             highlights={highlights}

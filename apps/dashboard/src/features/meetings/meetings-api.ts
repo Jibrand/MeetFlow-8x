@@ -28,6 +28,9 @@ export interface BackendTranscriptTurn {
 }
 
 export interface BackendActionItem {
+  projectId?: string;
+  priority?: string;
+  version?: number;
   id: string;
   workspaceId: string;
   meetingId?: string | null;
@@ -62,6 +65,14 @@ export interface BackendProcessingJob {
 }
 
 export interface BackendMeeting {
+  projectId: string;
+  project?: {
+    id: string;
+    name: string;
+    companyId: string;
+    needsReview: boolean;
+    company: { id: string; name: string };
+  };
   id: string;
   workspaceId: string;
   title: string;
@@ -167,7 +178,9 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     title: a.title,
     assigneeName: a.assigneeName || undefined,
     dueDate: a.dueDate || undefined,
-    priority: 'medium',
+    projectId: a.projectId,
+    priority:
+      (a.priority?.toLowerCase() as 'low' | 'medium' | 'high') || 'medium',
     completed: a.status === 'DONE',
   }));
 
@@ -192,6 +205,8 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
 
   return {
     id: m.id,
+    projectId: m.projectId,
+    project: m.project,
     title: m.title,
     startDate: m.startAt,
     durationSeconds: m.durationSeconds ?? 0,
@@ -264,6 +279,8 @@ export async function apiFetchMeetings(
     search?: string;
     page?: number;
     limit?: number;
+    projectId?: string;
+    companyId?: string;
     viewStatus?: string;
     platform?: string;
     sort?: string;
@@ -271,7 +288,13 @@ export async function apiFetchMeetings(
   signal?: AbortSignal,
 ): Promise<{ meetings: MeetingItem[]; total: number }> {
   const query = new URLSearchParams();
-  for (const key of ['viewStatus', 'platform', 'sort'] as const)
+  for (const key of [
+    'viewStatus',
+    'platform',
+    'sort',
+    'projectId',
+    'companyId',
+  ] as const)
     if (params?.[key]) query.set(key, params[key]);
   if (params?.status) query.set('status', params.status);
   if (params?.processingStatus)
@@ -320,6 +343,8 @@ export async function apiFetchMeeting(
 }
 
 export async function apiCreateMeeting(data: {
+  projectId: string;
+  companyId?: string;
   title: string;
   description?: string;
   startAt: string;
@@ -406,10 +431,14 @@ export async function apiFetchActionItems(
     meetingId?: string;
     status?: 'TODO' | 'IN_PROGRESS' | 'DONE';
     search?: string;
+    projectId?: string;
+    companyId?: string;
   },
   signal?: AbortSignal,
 ): Promise<ActionItemData[]> {
   const query = new URLSearchParams();
+  if (params?.projectId) query.set('projectId', params.projectId);
+  if (params?.companyId) query.set('companyId', params.companyId);
   if (params?.meetingId) query.set('meetingId', params.meetingId);
   if (params?.status) query.set('status', params.status);
   if (params?.search) query.set('search', params.search);
@@ -472,6 +501,12 @@ export async function apiDeleteActionItem(id: string): Promise<void> {
 
 export async function apiFetchOverviewStats(
   signal?: AbortSignal,
+  scope?: { projectId?: string; companyId?: string },
 ): Promise<OverviewStatsResponse> {
-  return apiClient<OverviewStatsResponse>('/meetings/overview', { signal });
+  const query = new URLSearchParams();
+  if (scope?.projectId) query.set('projectId', scope.projectId);
+  if (scope?.companyId) query.set('companyId', scope.companyId);
+  return apiClient<OverviewStatsResponse>('/meetings/overview?' + query, {
+    signal,
+  });
 }

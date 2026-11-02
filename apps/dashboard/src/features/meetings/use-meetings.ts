@@ -4,21 +4,21 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import * as React from 'react';
-import { authAdapter } from '../auth/lib/auth-adapter';
+import { useProjectContext } from '../projects/project-context';
 import type { MeetingItem } from '../../types/meeting';
 import type { MeetingFiltersState } from './meeting-filters';
 import { apiFetchMeetings } from './meetings-api';
 
 export function workspaceScope(): string {
-  const user = authAdapter.getUser();
-  return `${user?.id ?? 'anonymous'}:${user?.workspaceId ?? 'none'}`;
+  return 'single-admin';
 }
 export const meetingKey = (id: string) =>
   ['meeting', workspaceScope(), id] as const;
 export function useMeetingsQuery(enabled = true) {
+  const context = useProjectContext();
   return useQuery({
-    queryKey: ['meetings', workspaceScope()],
-    queryFn: ({ signal }) => apiFetchMeetings(undefined, signal),
+    queryKey: ['meetings', workspaceScope(), context],
+    queryFn: ({ signal }) => apiFetchMeetings(context, signal),
     enabled,
     staleTime: 30_000,
     gcTime: 300_000,
@@ -95,11 +95,13 @@ export async function invalidateMeetingData(
 }
 
 export function useMeetingPage(page: number, filters: MeetingFiltersState) {
+  const context = useProjectContext();
   return useQuery({
     queryKey: [
       'meeting-pages',
       workspaceScope(),
       {
+        ...context,
         page,
         search: filters.search,
         status: filters.status,
@@ -110,6 +112,7 @@ export function useMeetingPage(page: number, filters: MeetingFiltersState) {
     queryFn: ({ signal }) =>
       apiFetchMeetings(
         {
+          ...context,
           page,
           limit: 9,
           search: filters.search || undefined,
@@ -142,7 +145,18 @@ export async function insertCreatedMeeting(
   );
   const scope = workspaceScope();
   client.setQueriesData<{ meetings: MeetingItem[]; total: number }>(
-    { queryKey: ['meetings', scope] },
+    {
+      queryKey: ['meetings', scope],
+      predicate: (query) => {
+        const selected = query.queryKey[2] as
+          { projectId?: string; companyId?: string } | undefined;
+        return (
+          (!selected?.projectId || selected.projectId === meeting.projectId) &&
+          (!selected?.companyId ||
+            selected.companyId === meeting.project?.companyId)
+        );
+      },
+    },
     (old) =>
       old
         ? {
@@ -160,7 +174,22 @@ export async function insertCreatedMeeting(
   const key = [
     'meeting-pages',
     scope,
-    { page: 1, search: '', status: 'all', platform: 'all', sort: 'newest' },
+    {
+      ...(() => {
+        try {
+          return JSON.parse(
+            localStorage.getItem('meetflow-project-context-v1') || '{}',
+          );
+        } catch {
+          return {};
+        }
+      })(),
+      page: 1,
+      search: '',
+      status: 'all',
+      platform: 'all',
+      sort: 'newest',
+    },
   ];
   client.setQueryData<{ meetings: MeetingItem[]; total: number }>(
     key,

@@ -21,6 +21,7 @@ export interface TranscriptTurnItem {
 }
 
 export interface ActionItemData {
+  projectId?: string;
   id: string;
   meetingId: string;
   meetingTitle?: string;
@@ -86,6 +87,14 @@ export interface MeetingClip {
 }
 
 export interface MeetingItem {
+  projectId?: string;
+  project?: {
+    id: string;
+    name: string;
+    companyId: string;
+    needsReview: boolean;
+    company: { id: string; name: string };
+  };
   id: string;
   title: string;
   startDate: string; // ISO string

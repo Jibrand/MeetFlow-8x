@@ -1,3 +1,4 @@
+import { requireProject } from '../projects/projects.routes';
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'node:path';
@@ -86,12 +87,14 @@ mediaRouter.post(
           const input = CreateMeetingSchema.omit({ transcript: true }).parse(
             metadata,
           );
+          const project=await requireProject(input.projectId,input.companyId);if(project.status==='ARCHIVED')throw Object.assign(new Error('Choose an active project.'),{status:409});
           const id = randomUUID();
           const video = req.file.mimetype.startsWith('video/');
           const created = await prisma.meeting.create({
             data: {
               id,
               workspaceId: req.workspaceId!,
+              projectId: input.projectId,
               createdById: req.user!.userId,
               title: input.title,
               description: input.description,
@@ -121,17 +124,15 @@ mediaRouter.post(
             workspaceId: req.workspaceId!,
           });
           const { mediaStorageKey: _key, ...meeting } = created;
-          res
-            .status(201)
-            .json({
-              success: true,
-              data: {
-                ...meeting,
-                processingStatus:
-                  queue.status === 'REDIS_UNAVAILABLE' ? 'FAILED' : 'QUEUED',
-                queueStatus: queue.status,
-              },
-            });
+          res.status(201).json({
+            success: true,
+            data: {
+              ...meeting,
+              processingStatus:
+                queue.status === 'REDIS_UNAVAILABLE' ? 'FAILED' : 'QUEUED',
+              queueStatus: queue.status,
+            },
+          });
         } catch (error) {
           if (!saved && req.file)
             await removeMedia(req.file.filename).catch(() => {});

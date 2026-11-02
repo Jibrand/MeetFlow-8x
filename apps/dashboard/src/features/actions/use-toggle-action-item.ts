@@ -1,3 +1,4 @@
+import type { Company } from '../projects/project-context';
 import {
   useMutation,
   useMutationState,
@@ -68,34 +69,45 @@ export function useToggleActionItem() {
               }
             : detail,
       );
-      const overview = client.getQueryData<OverviewStatsResponse>([
-        'overview',
-        scope,
-      ]);
+      const companyId = client
+        .getQueryData<Company[]>(['companies'])
+        ?.find((c) => c.projects.some((p) => p.id === original?.projectId))?.id;
+      const overviewFilter = {
+        queryKey: ['overview', scope],
+        predicate: (query: { queryKey: readonly unknown[] }) => {
+          const selected = query.queryKey[2] as
+            { projectId?: string; companyId?: string } | undefined;
+          return (
+            (!selected?.projectId ||
+              selected.projectId === original?.projectId) &&
+            (!selected?.companyId || selected.companyId === companyId)
+          );
+        },
+      };
+      const overviews =
+        client.getQueriesData<OverviewStatsResponse>(overviewFilter);
       const delta =
         original && original.completed !== completed ? (completed ? 1 : -1) : 0;
       const overdueDelta =
         original?.dueDate && new Date(original.dueDate) < new Date()
           ? delta
           : 0;
-      client.setQueriesData<OverviewStatsResponse>(
-        { queryKey: ['overview', scope] },
-        (stats) =>
-          stats
-            ? {
-                ...stats,
-                openActionItems: stats.openActionItems - delta,
-                completedActionItems: stats.completedActionItems + delta,
-                overdueActionItems: stats.overdueActionItems - overdueDelta,
-                attentionItems: stats.attentionItems.map((item) =>
-                  item.id === id
-                    ? { ...item, status: completed ? 'DONE' : 'TODO' }
-                    : item,
-                ),
-              }
-            : stats,
+      client.setQueriesData<OverviewStatsResponse>(overviewFilter, (stats) =>
+        stats
+          ? {
+              ...stats,
+              openActionItems: stats.openActionItems - delta,
+              completedActionItems: stats.completedActionItems + delta,
+              overdueActionItems: stats.overdueActionItems - overdueDelta,
+              attentionItems: stats.attentionItems.map((item) =>
+                item.id === id
+                  ? { ...item, status: completed ? 'DONE' : 'TODO' }
+                  : item,
+              ),
+            }
+          : stats,
       );
-      return { lists, details, delta, overdueDelta, overview };
+      return { lists, details, delta, overdueDelta, overviews };
     },
     onError: (error, { id }, context) => {
       // Restore this item only, so a failed task cannot roll back another in-flight task.
@@ -125,27 +137,24 @@ export function useToggleActionItem() {
               : detail,
           );
       }
-      if (context)
-        client.setQueriesData<OverviewStatsResponse>(
-          { queryKey: ['overview', scope] },
-          (stats) =>
-            stats
-              ? {
-                  ...stats,
-                  openActionItems: stats.openActionItems + context.delta,
-                  completedActionItems:
-                    stats.completedActionItems - context.delta,
-                  overdueActionItems:
-                    stats.overdueActionItems + context.overdueDelta,
-                  attentionItems: stats.attentionItems.map((item) =>
-                    item.id === id
-                      ? (context.overview?.attentionItems.find(
-                          (old) => old.id === id,
-                        ) ?? item)
-                      : item,
-                  ),
-                }
-              : stats,
+      for (const [key, old] of context?.overviews ?? [])
+        client.setQueryData<OverviewStatsResponse>(key, (stats) =>
+          stats && context
+            ? {
+                ...stats,
+                openActionItems: stats.openActionItems + context.delta,
+                completedActionItems:
+                  stats.completedActionItems - context.delta,
+                overdueActionItems:
+                  stats.overdueActionItems + context.overdueDelta,
+                attentionItems: stats.attentionItems.map((item) =>
+                  item.id === id
+                    ? (old?.attentionItems.find((before) => before.id === id) ??
+                      item)
+                    : item,
+                ),
+              }
+            : stats,
         );
       toast.error(
         error.message || 'Could not save task. Your change was rolled back.',
@@ -154,8 +163,19 @@ export function useToggleActionItem() {
     onSettled: () => {
       // Revalidate once after the last concurrent toggle, preserving other optimistic changes.
       if (client.isMutating({ mutationKey }) === 1) {
-        for (const key of ['action-items', 'overview', 'meeting'])
-          void client.invalidateQueries({ queryKey: [key, scope] });
+        for (const key of [
+          'action-items',
+          'overview',
+          'meeting',
+          'board',
+          'task',
+          'intelligence',
+        ])
+          void client.invalidateQueries({
+            queryKey: ['board', 'task', 'intelligence'].includes(key)
+              ? [key]
+              : [key, scope],
+          });
       }
     },
   });

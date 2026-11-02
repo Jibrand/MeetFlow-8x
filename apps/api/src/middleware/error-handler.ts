@@ -47,6 +47,19 @@ export function errorHandler(
     return;
   }
 
+  if (err.code === 'P2003') {
+    res
+      .status(409)
+      .json({
+        success: false,
+        error: {
+          code: 'LINKED_HISTORY',
+          message:
+            'This record has linked execution history. Archive it or resolve its links before deleting or moving it.',
+        },
+      });
+    return;
+  }
   // 2. Prisma Unique Constraint Errors (P2002)
   if (err.code === 'P2002') {
     res.status(409).json({

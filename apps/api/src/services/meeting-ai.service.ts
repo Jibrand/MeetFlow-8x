@@ -4,6 +4,7 @@ import { logger } from '../lib/logger';
 import { ParsedSegment } from './transcript-parser.service';
 
 export const ExtractedActionItemSchema = z.object({
+  quote: z.string().default(''),
   title: z.string().min(1),
   description: z.string().optional().default(''),
   assigneeName: z.string().nullable().optional().default(null),
@@ -25,6 +26,48 @@ export const ExtractedHighlightSchema = z.object({
 export type ExtractedHighlight = z.infer<typeof ExtractedHighlightSchema>;
 
 export const MeetingIntelligenceResultSchema = z.object({
+  commitmentUpdates: z
+    .array(
+      z.object({
+        title: z.string(),
+        ownerName: z.string().nullable(),
+        state: z.enum([
+          'COMPLETED',
+          'DELAYED',
+          'BLOCKED',
+          'DEADLINE_CHANGED',
+          'REPEATED',
+        ]),
+        dueDate: z.string().datetime({ offset: true }).nullable(),
+        quote: z.string().min(1),
+      }),
+    )
+    .default([]),
+  decisionRecords: z
+    .array(
+      z.object({
+        title: z.string().max(255),
+        description: z.string(),
+        status: z.enum(['PROPOSED', 'CONFIRMED', 'CANCELLED']),
+        quote: z.string().min(1),
+      }),
+    )
+    .default([]),
+  actionSuggestions: z
+    .array(
+      z.object({
+        type: z.enum([
+          'FOLLOW_UP_DRAFT',
+          'DOCUMENT_DRAFT',
+          'IMPLEMENTATION_PLAN',
+          'DECISION_BRIEF',
+        ]),
+        title: z.string().max(255),
+        instructions: z.string(),
+        quote: z.string().min(1),
+      }),
+    )
+    .default([]),
   overview: z.string().min(1).max(4000),
   keyPoints: z.array(z.string()).default([]),
   decisions: z.array(z.string()).default([]),
@@ -111,6 +154,18 @@ export class MeetingAIService {
       ).values(),
     ];
     return {
+      commitmentUpdates: unique(
+        results.flatMap((r) => r.commitmentUpdates),
+        (v) => v.title + '|' + v.state + '|' + v.quote,
+      ),
+      decisionRecords: unique(
+        results.flatMap((r) => r.decisionRecords),
+        (v) => v.description,
+      ),
+      actionSuggestions: unique(
+        results.flatMap((r) => r.actionSuggestions),
+        (v) => v.type + '|' + v.title,
+      ),
       participants: unique(
         results.flatMap((r) => r.participants),
         (person) => person.name,
@@ -173,6 +228,9 @@ export class MeetingAIService {
         topics: [],
         highlights: [],
         actionItems: [],
+        commitmentUpdates: [],
+        decisionRecords: [],
+        actionSuggestions: [],
         participants: [],
         model: this.defaultModel,
       };
@@ -192,7 +250,7 @@ SAFETY & INTEGRITY DIRECTIVES:
 - Identify participants and speaker names from explicit transcript evidence. Extract a role or email ONLY when explicitly stated; otherwise return null. Do not infer job titles or turn anonymous speaker labels into invented identities.
 - Do NOT fabricate speaker identities or assignees. If a task owner is not mentioned or confirmed, assigneeName must be null.
 - Do NOT invent specific deadlines. Only extract due dates that were explicitly mentioned or agreed to in the meeting (relative to the meeting date: ${meetingDate.toISOString()} in timezone ${timezone}). Format as ISO 8601 if resolved, or null.
-- Extract confirmed decisions only.
+- Extract confirmed decisions in decisions; retain proposed/cancelled statements in decisionRecords. Use exact transcript quotes for execution evidence. New promises only in actionItems; repeated, completed or changed commitments belong in commitmentUpdates. Never mark a task complete merely because completion is requested or proposed. Suggest drafts only; never claim emails were sent.
 - Output MUST be valid JSON adhering strictly to the requested schema.`;
 
     const userPrompt = `Meeting Title: "${meetingTitle}"
@@ -206,6 +264,9 @@ ${transcriptText}
 
 Extract structured intelligence in JSON matching this schema:
 {
+  "commitmentUpdates": [{"title":"Existing deliverable mentioned","ownerName":null,"state":"COMPLETED | DELAYED | BLOCKED | DEADLINE_CHANGED | REPEATED","dueDate":null,"quote":"Exact supporting transcript quote"}],
+  "decisionRecords": [{"title":"Decision topic","description":"Original decision statement","status":"PROPOSED | CONFIRMED | CANCELLED","quote":"Exact supporting transcript quote"}],
+  "actionSuggestions": [{"type":"FOLLOW_UP_DRAFT | DOCUMENT_DRAFT | IMPLEMENTATION_PLAN | DECISION_BRIEF","title":"Useful draft action","instructions":"What a draft should contain, grounded in this meeting","quote":"Exact supporting transcript quote"}],
   "participants": [{ "name": "Explicitly named person or speaker label", "role": null, "email": null }],
   "overview": "Concise executive overview of what was discussed and concluded (2-4 sentences).",
   "keyPoints": ["Important discussion point 1", "Important discussion point 2"],
@@ -218,6 +279,7 @@ Extract structured intelligence in JSON matching this schema:
     {
       "title": "Clear actionable task title",
       "description": "Specific context from discussion",
+      "quote": "Exact transcript evidence for this promise",
       "assigneeName": "Name of assigned person, or null if unassigned",
       "dueDate": "ISO 8601 string if mentioned, or null",
       "priority": "low | medium | high"

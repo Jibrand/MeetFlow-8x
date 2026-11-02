@@ -28,8 +28,8 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     return authAdapter.subscribe((user) => setCurrentUser(user));
   }, []);
 
-  const workspaceName = currentUser?.workspace || 'Workspace';
-  const roleLabel = currentUser?.role ? `${currentUser.role.toUpperCase()} WORKSPACE` : 'WORKSPACE';
+  const workspaceName = currentUser?.workspace || 'MeetFlow';
+  const roleLabel = 'SINGLE ADMIN';
 
   // Close mobile drawer with Escape
   React.useEffect(() => {

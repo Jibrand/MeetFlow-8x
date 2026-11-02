@@ -1,293 +1,230 @@
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import {
-  CreateActionItemSchema,
-  UpdateActionItemSchema,
-  ListActionItemsQuerySchema,
-} from './action-items.schema';
-
+import { TaskInput, taskProject } from '../projects/tasks.routes';
+import { requireProject } from '../projects/projects.routes';
+import { processingTransaction } from '../../services/processing-transaction';
+const Update = TaskInput.omit({ projectId: true, meetingId: true })
+  .partial()
+  .extend({ version: z.number().int().min(0).optional() });
+const List = z.object({
+  projectId: z.string().uuid().optional(),
+  companyId: z.string().uuid().optional(),
+  meetingId: z.string().uuid().optional(),
+  status: z.enum(['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE']).optional(),
+  search: z.string().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 export class ActionItemsController {
-  /**
-   * GET /api/v1/action-items
-   */
-  async listActionItems(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  async listActionItems(req: Request, res: Response, next: NextFunction) {
     try {
-      const workspaceId = req.workspaceId!;
-      const query = ListActionItemsQuerySchema.parse(req.query);
-
-      const where: any = { workspaceId };
-      if (query.meetingId) where.meetingId = query.meetingId;
-      if (query.status) where.status = query.status;
-      if (query.search) {
-        where.OR = [
-          { title: { contains: query.search, mode: 'insensitive' } },
-          { description: { contains: query.search, mode: 'insensitive' } },
-          { assigneeName: { contains: query.search, mode: 'insensitive' } },
-        ];
+      const q = List.parse(req.query);
+      let scope = q.projectId;
+      if (q.meetingId) {
+        const meeting = await prisma.meeting.findUniqueOrThrow({
+          where: { id: q.meetingId },
+        });
+        if (scope && scope !== meeting.projectId)
+          throw Object.assign(new Error('Meeting/project mismatch.'), {
+            status: 409,
+          });
+        scope = meeting.projectId;
       }
-
-      const totalPromise = prisma.actionItem.count({ where });
-      const skip = (query.page - 1) * query.limit;
-
-      const itemsPromise = prisma.actionItem.findMany({
-        where,
-        skip,
-        take: query.limit,
-        orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
-        include: {
-          meeting: {
-            select: {
-              id: true,
-              title: true,
-              startAt: true,
-            },
+      if (scope) await requireProject(scope, q.companyId);
+      const where: Prisma.ActionItemWhereInput = {
+        workspaceId: req.workspaceId!,
+        deletedAt: null,
+        archivedAt: null,
+        ...(scope
+          ? { projectId: scope }
+          : q.companyId
+            ? { project: { companyId: q.companyId } }
+            : {}),
+        ...(q.status ? { status: q.status } : {}),
+        AND: [
+          ...(q.meetingId
+            ? [
+                {
+                  OR: [
+                    { meetingId: q.meetingId },
+                    { history: { some: { meetingId: q.meetingId } } },
+                  ],
+                },
+              ]
+            : []),
+          ...(q.search
+            ? [
+                {
+                  OR: [
+                    {
+                      title: {
+                        contains: q.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                    {
+                      description: {
+                        contains: q.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                    {
+                      assigneeName: {
+                        contains: q.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      };
+      const [total, items] = await Promise.all([
+        prisma.actionItem.count({ where }),
+        prisma.actionItem.findMany({
+          where,
+          skip: (q.page - 1) * q.limit,
+          take: q.limit,
+          orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+          include: {
+            meeting: { select: { id: true, title: true, startAt: true } },
           },
-        },
-      });
-
-      const [total, items] = await Promise.all([totalPromise, itemsPromise]);
-      const totalPages = Math.ceil(total / query.limit) || 1;
-      res.status(200).json({
+        }),
+      ]);
+      res.json({
         success: true,
         data: {
           actionItems: items.map((item) => ({
-            id: item.id,
-            workspaceId: item.workspaceId,
-            meetingId: item.meetingId,
-            meetingTitle: item.meeting?.title || null,
-            meetingStartAt: item.meeting?.startAt || null,
-            title: item.title,
-            description: item.description,
-            assigneeName: item.assigneeName,
-            assigneeUserId: item.assigneeUserId,
-            dueDate: item.dueDate,
-            status: item.status,
-            source: item.source,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
+            ...item,
+            meetingTitle: item.meeting?.title ?? null,
           })),
           pagination: {
             total,
-            page: query.page,
-            limit: query.limit,
-            totalPages,
+            page: q.page,
+            limit: q.limit,
+            totalPages: Math.max(1, Math.ceil(total / q.limit)),
           },
         },
-        meta: {
-          requestId: req.id,
-          timestamp: new Date().toISOString(),
-          version: 'v1',
-        },
       });
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   }
-
-  /**
-   * POST /api/v1/action-items
-   */
-  async createActionItem(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  async createActionItem(req: Request, res: Response, next: NextFunction) {
     try {
-      const workspaceId = req.workspaceId!;
-      const input = CreateActionItemSchema.parse(req.body);
-
-      // If meetingId provided, verify workspace ownership
-      if (input.meetingId) {
-        const meeting = await prisma.meeting.findFirst({
-          where: { id: input.meetingId, workspaceId },
-        });
-        if (!meeting) {
-          res.status(404).json({
-            success: false,
-            error: {
-              code: 'MEETING_NOT_FOUND',
-              message: 'Target meeting not found in workspace.',
-            },
-            meta: {
-              requestId: req.id,
-              timestamp: new Date().toISOString(),
-              version: 'v1',
-            },
-          });
-          return;
-        }
-      }
-
-      const item = await prisma.actionItem.create({
-        data: {
-          workspaceId,
-          meetingId: input.meetingId || null,
-          title: input.title,
-          description: input.description || null,
-          assigneeName: input.assigneeName || null,
-          assigneeUserId: input.assigneeUserId || null,
-          dueDate: input.dueDate ? new Date(input.dueDate) : null,
-          status: input.status,
-          source: 'MANUAL',
-        },
-        include: {
-          meeting: {
-            select: {
-              id: true,
-              title: true,
-            },
+      const input = TaskInput.parse(req.body);
+      const projectId = await taskProject(input);
+      const item = await processingTransaction(async (tx) => {
+        const task = await tx.actionItem.create({
+          data: {
+            projectId,
+            workspaceId: req.workspaceId!,
+            meetingId: input.meetingId ?? null,
+            title: input.title,
+            description: input.description,
+            assigneeName: input.assigneeName,
+            priority: input.priority,
+            dueDate: input.dueDate ? new Date(input.dueDate) : null,
+            status: input.status,
+            position: Date.now(),
+            source: 'MANUAL',
           },
-        },
+        });
+        await tx.commitmentHistory.create({
+          data: {
+            projectId,
+            actionItemId: task.id,
+            meetingId: task.meetingId,
+            eventType: 'CREATED',
+            evidence: { status: task.status },
+          },
+        });
+        return task;
       });
-
-      res.status(201).json({
-        success: true,
-        data: {
-          ...item,
-          meetingTitle: item.meeting?.title || null,
-        },
-        meta: {
-          requestId: req.id,
-          timestamp: new Date().toISOString(),
-          version: 'v1',
-        },
-      });
-    } catch (err) {
-      next(err);
+      res.status(201).json({ success: true, data: item });
+    } catch (e) {
+      next(e);
     }
   }
-
-  /**
-   * PATCH /api/v1/action-items/:id
-   */
-  async updateActionItem(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  async updateActionItem(req: Request, res: Response, next: NextFunction) {
     try {
-      const workspaceId = req.workspaceId!;
-      const { id } = req.params;
-      const input = UpdateActionItemSchema.parse(req.body);
-
-      const existing = await prisma.actionItem.findFirst({
-        where: { id, workspaceId },
-      });
-
-      if (!existing) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'ACTION_ITEM_NOT_FOUND',
-            message: 'Action item not found.',
+      const id = z.string().uuid().parse(req.params.id);
+      const input = Update.parse(req.body);
+      const item = await processingTransaction(async (tx) => {
+        const old = await tx.actionItem.findFirstOrThrow({
+          where: { id, workspaceId: req.workspaceId!, deletedAt: null },
+        });
+        const { version, ...fields } = input;
+        const changed = await tx.actionItem.updateMany({
+          where: {
+            id,
+            projectId: old.projectId,
+            version: version ?? old.version,
           },
-          meta: {
-            requestId: req.id,
-            timestamp: new Date().toISOString(),
-            version: 'v1',
+          data: {
+            ...fields,
+            ...(input.dueDate !== undefined
+              ? { dueDate: input.dueDate ? new Date(input.dueDate) : null }
+              : {}),
+            version: { increment: 1 },
           },
         });
-        return;
-      }
-
-      const updated = await prisma.actionItem.update({
-        where: { id },
-        data: {
-          ...(input.title ? { title: input.title } : {}),
-          ...(input.description !== undefined
-            ? { description: input.description }
-            : {}),
-          ...(input.assigneeName !== undefined
-            ? { assigneeName: input.assigneeName }
-            : {}),
-          ...(input.assigneeUserId !== undefined
-            ? { assigneeUserId: input.assigneeUserId }
-            : {}),
-          ...(input.dueDate !== undefined
-            ? { dueDate: input.dueDate ? new Date(input.dueDate) : null }
-            : {}),
-          ...(input.status ? { status: input.status } : {}),
-        },
-        include: {
-          meeting: {
-            select: {
-              id: true,
-              title: true,
+        if (!changed.count)
+          throw Object.assign(
+            new Error('This task changed. Reload and retry.'),
+            { status: 409 },
+          );
+        await tx.commitmentHistory.create({
+          data: {
+            projectId: old.projectId,
+            actionItemId: id,
+            meetingId: old.meetingId,
+            eventType: 'UPDATED',
+            evidence: {
+              before: {
+                status: old.status,
+                dueDate: old.dueDate?.toISOString() ?? null,
+              },
+              changes: input,
             },
           },
-        },
+        });
+        return tx.actionItem.findUniqueOrThrow({ where: { id } });
       });
-
-      res.status(200).json({
-        success: true,
-        data: {
-          ...updated,
-          meetingTitle: updated.meeting?.title || null,
-        },
-        meta: {
-          requestId: req.id,
-          timestamp: new Date().toISOString(),
-          version: 'v1',
-        },
-      });
-    } catch (err) {
-      next(err);
+      res.json({ success: true, data: item });
+    } catch (e) {
+      next(e);
     }
   }
-
-  /**
-   * DELETE /api/v1/action-items/:id
-   */
-  async deleteActionItem(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  async deleteActionItem(req: Request, res: Response, next: NextFunction) {
     try {
-      const workspaceId = req.workspaceId!;
-      const { id } = req.params;
-
-      const existing = await prisma.actionItem.findFirst({
-        where: { id, workspaceId },
-      });
-
-      if (!existing) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'ACTION_ITEM_NOT_FOUND',
-            message: 'Action item not found.',
-          },
-          meta: {
-            requestId: req.id,
-            timestamp: new Date().toISOString(),
-            version: 'v1',
+      const id = z.string().uuid().parse(req.params.id);
+      await processingTransaction(async (tx) => {
+        const old = await tx.actionItem.findFirstOrThrow({
+          where: { id, workspaceId: req.workspaceId! },
+        });
+        if (old.deletedAt) return;
+        await tx.actionItem.update({
+          where: { id },
+          data: { deletedAt: new Date(), version: { increment: 1 } },
+        });
+        await tx.commitmentHistory.create({
+          data: {
+            projectId: old.projectId,
+            actionItemId: id,
+            meetingId: old.meetingId,
+            eventType: 'DELETED',
+            evidence: { title: old.title },
           },
         });
-        return;
-      }
-
-      await prisma.actionItem.delete({
-        where: { id },
       });
-
-      res.status(200).json({
-        success: true,
-        data: { id, deleted: true },
-        meta: {
-          requestId: req.id,
-          timestamp: new Date().toISOString(),
-          version: 'v1',
-        },
-      });
-    } catch (err) {
-      next(err);
+      res.json({ success: true, data: { id, deleted: true } });
+    } catch (e) {
+      next(e);
     }
   }
 }
-
 export const actionItemsController = new ActionItemsController();

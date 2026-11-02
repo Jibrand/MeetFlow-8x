@@ -1,10 +1,10 @@
+import { projectsRouter } from '../modules/projects/projects.routes';
 import { publicMeetingsRouter } from '../modules/meetings/collaboration.routes';
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from '../modules/auth/auth.routes';
 import { usersRouter } from '../modules/users/users.routes';
 import { workspacesRouter } from '../modules/workspaces/workspaces.routes';
-import { onboardingRouter } from '../modules/onboarding/onboarding.routes';
 import { meetingsRouter } from '../modules/meetings/meetings.routes';
 import { actionItemsRouter } from '../modules/action-items/action-items.routes';
 import { askRouter } from '../modules/ask/ask.routes';
@@ -35,10 +35,10 @@ v1Router.get('/', (req, res) => {
 });
 
 v1Router.use('/public/meetings', publicMeetingsRouter);
+v1Router.use(projectsRouter);
 v1Router.use('/auth', authRouter);
 v1Router.use('/users', usersRouter);
 v1Router.use('/workspaces', workspacesRouter);
-v1Router.use('/onboarding', onboardingRouter);
 v1Router.use('/meetings', meetingsRouter);
 v1Router.use('/action-items', actionItemsRouter);
 v1Router.use('/ask', askRouter);
@@ -51,6 +51,5 @@ apiRouter.use('/v1', v1Router);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/workspaces', workspacesRouter);
-apiRouter.use('/onboarding', onboardingRouter);
 apiRouter.use('/meetings', meetingsRouter);
 apiRouter.use('/action-items', actionItemsRouter);

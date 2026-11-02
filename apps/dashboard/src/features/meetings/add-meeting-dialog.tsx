@@ -1,3 +1,8 @@
+import {
+  ProjectPicker,
+  useProjectContext,
+  setProjectContext,
+} from '../projects/project-context';
 import * as React from 'react';
 import { ParticipantChips, type ParticipantInput } from './participant-chips';
 import { useQueryClient } from '@tanstack/react-query';
@@ -48,12 +53,18 @@ export function AddMeetingDialog({
   hideTrigger,
 }: AddMeetingDialogProps) {
   const queryClient = useQueryClient();
+  const context = useProjectContext();
+  const [projectSelection, setProjectSelection] = React.useState(context);
+
   const [internalOpen, setInternalOpen] = React.useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (value: boolean) => {
     setInternalOpen(value);
     onOpenChange?.(value);
   };
+  React.useEffect(() => {
+    if (open) setProjectSelection(context);
+  }, [open]);
   const [participants, setParticipants] = React.useState<ParticipantInput[]>(
     [],
   );
@@ -173,6 +184,10 @@ export function AddMeetingDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!projectSelection.companyId || !projectSelection.projectId) {
+      toast.error('Select a company and project before creating a meeting.');
+      return;
+    }
     if (!title.trim()) {
       toast.error('Meeting title is required.');
       return;
@@ -195,6 +210,8 @@ export function AddMeetingDialog({
       ) as 'txt' | 'srt' | 'vtt';
 
       const payload = {
+        companyId: projectSelection.companyId,
+        projectId: projectSelection.projectId,
         title: title.trim(),
         description: description.trim() || undefined,
         startAt: startDateTime.toISOString(),
@@ -436,6 +453,15 @@ export function AddMeetingDialog({
                   )}
                 </div>
 
+                <ProjectPicker
+                  required
+                  value={projectSelection}
+                  onChange={(value) => {
+                    setProjectSelection(value);
+                    setProjectContext(value.companyId, value.projectId);
+                  }}
+                />
+
                 <div className="space-y-1">
                   <label
                     htmlFor="participants-optional"
@@ -464,7 +490,12 @@ export function AddMeetingDialog({
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={isSubmitting || !title.trim()}
+                    disabled={
+                      isSubmitting ||
+                      !title.trim() ||
+                      !projectSelection.companyId ||
+                      !projectSelection.projectId
+                    }
                     className="bg-amber-600 hover:bg-amber-700 text-white"
                   >
                     {isSubmitting
@@ -544,6 +575,15 @@ export function AddMeetingDialog({
                   </p>
                 </div>
 
+                <ProjectPicker
+                  required
+                  value={projectSelection}
+                  onChange={(value) => {
+                    setProjectSelection(value);
+                    setProjectContext(value.companyId, value.projectId);
+                  }}
+                />
+
                 <div className="space-y-1">
                   <label
                     htmlFor="participants-optional"
@@ -570,7 +610,13 @@ export function AddMeetingDialog({
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting || !mediaFile || !title.trim()}
+                    disabled={
+                      isSubmitting ||
+                      !mediaFile ||
+                      !title.trim() ||
+                      !projectSelection.companyId ||
+                      !projectSelection.projectId
+                    }
                   >
                     {isSubmitting ? 'Uploading…' : 'Upload & Process'}
                   </Button>

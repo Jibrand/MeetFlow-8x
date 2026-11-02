@@ -31,10 +31,14 @@ reconciliationTimer.unref();
 void reconcile();
 
 const app = createApp();
-const calendarTimer = setInterval(() => { void syncConnectedCalendars().catch((error: unknown) => logger.error('Calendar synchronization could not run', { error })); }, 60_000);
+const calendarTimer = setInterval(() => {
+  void syncConnectedCalendars().catch((error: unknown) =>
+    logger.error('Calendar synchronization could not run', { error }),
+  );
+}, 60_000);
 calendarTimer.unref();
 
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port, process.env.HOST || '127.0.0.1', () => {
   if (config.env === 'development') worker = startMeetingProcessingWorker();
   logger.info({
     message: `MeetFlow API server listening on http://localhost:${config.port}`,

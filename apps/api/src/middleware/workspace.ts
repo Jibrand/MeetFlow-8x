@@ -1,8 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../lib/prisma';
-import { WorkspaceRole } from '@prisma/client';
-import { logger } from '../lib/logger';
-
+import type { Request, Response, NextFunction } from 'express';
+import type { WorkspaceRole } from '@prisma/client';
+import { instanceContext } from '../services/instance';
 declare global {
   namespace Express {
     interface Request {
@@ -11,73 +9,17 @@ declare global {
     }
   }
 }
-
 export async function requireWorkspace(
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const userId = req.user?.userId;
-  if (!userId) {
-    res.status(401).json({
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-      meta: {
-        timestamp: new Date().toISOString(),
-        version: 'v1',
-        requestId: req.id,
-      },
-    });
-    return;
-  }
-
-  const headerWorkspaceId = req.headers['x-workspace-id'] as string | undefined;
-
   try {
-    let membership;
-    if (headerWorkspaceId) {
-      membership = await prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId,
-            workspaceId: headerWorkspaceId,
-          },
-        },
-      });
-    } else {
-      membership = await prisma.workspaceMember.findFirst({
-        where: { userId },
-        orderBy: { createdAt: 'asc' },
-      });
-    }
-
-    if (!membership) {
-      res.status(403).json({
-        success: false,
-        error: {
-          code: 'WORKSPACE_FORBIDDEN',
-          message:
-            'You do not have access to any workspace or the specified workspace.',
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-          version: 'v1',
-          requestId: req.id,
-        },
-      });
-      return;
-    }
-
-    req.workspaceId = membership.workspaceId;
-    req.workspaceRole = membership.role;
+    const admin = await instanceContext();
+    req.workspaceId = admin.workspaceId;
+    req.workspaceRole = 'OWNER';
     next();
   } catch (error) {
-    logger.error('Workspace access lookup failed', { error });
-    next(
-      Object.assign(
-        new Error('Unable to verify workspace access. Please retry.'),
-        { status: 503, code: 'WORKSPACE_UNAVAILABLE' },
-      ),
-    );
+    next(error);
   }
 }

@@ -17,8 +17,18 @@ export interface NavItemConfig {
 
 export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
   { title: 'Overview', path: '/overview', icon: LayoutDashboard },
-  { title: 'My Meetings', path: '/', icon: Video, matchPrefixes: ['/meetings'] },
+  {
+    title: 'My Meetings',
+    path: '/',
+    icon: Video,
+    matchPrefixes: ['/meetings'],
+  },
   { title: 'Action Items', path: '/actions', icon: CheckSquare },
+  { title: 'Companies & Projects', path: '/projects', icon: LayoutDashboard },
+  { title: 'Project Board', path: '/board', icon: LayoutDashboard },
+  { title: 'Decision Memory', path: '/decisions', icon: CheckSquare },
+  { title: 'Follow-up Tracker', path: '/followups', icon: CheckSquare },
+  { title: 'AI Actions', path: '/ai-actions', icon: Sparkles },
   { title: 'Calendar', path: '/calendar', icon: Calendar },
   { title: 'Ask MeetFlow', path: '/ask', icon: Sparkles },
 ];
@@ -27,18 +37,25 @@ export const SECONDARY_NAV_ITEMS: NavItemConfig[] = [
   { title: 'Settings', path: '/settings', icon: Settings },
 ];
 
-export function isNavItemActive(item: NavItemConfig, currentPath: string): boolean {
+export function isNavItemActive(
+  item: NavItemConfig,
+  currentPath: string,
+): boolean {
   if (typeof currentPath !== 'string') return false;
   if (currentPath === item.path) return true;
   return (item.matchPrefixes ?? []).some((p) => currentPath.startsWith(p));
 }
 
 /** Contextual header title for a route. */
-export function getPageTitle(path: string): { section: string; detail?: string } {
+export function getPageTitle(path: string): {
+  section: string;
+  detail?: string;
+} {
   if (typeof path !== 'string') return { section: 'MeetFlow' };
   if (path === '/overview') return { section: 'Overview' };
   if (path === '/' || path === '/meetings') return { section: 'My Meetings' };
-  if (path.startsWith('/meetings/')) return { section: 'My Meetings', detail: 'Meeting' };
+  if (path.startsWith('/meetings/'))
+    return { section: 'My Meetings', detail: 'Meeting' };
   if (path === '/actions') return { section: 'Action Items' };
   if (path === '/calendar') return { section: 'Calendar' };
   if (path === '/ask') return { section: 'Ask MeetFlow' };

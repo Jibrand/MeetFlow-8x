@@ -26,6 +26,8 @@ export const TranscriptInputSchema = z.object({
 });
 
 export const CreateMeetingSchema = z.object({
+  projectId: z.string().uuid(),
+  companyId: z.string().uuid().optional(),
   title: z.string().min(1, 'Meeting title is required').max(255),
   description: z.string().max(2000).optional().nullable(),
   startAt: z
@@ -69,6 +71,8 @@ export const UploadTranscriptSchema = TranscriptInputSchema;
 export type UploadTranscriptInput = z.infer<typeof UploadTranscriptSchema>;
 
 export const ListMeetingsQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  companyId: z.string().uuid().optional(),
   viewStatus: z
     .enum(['ready', 'processing', 'scheduled', 'failed', 'cancelled'])
     .optional(),

@@ -51,6 +51,7 @@ enum SourceType {
 }
 
 enum ActionItemStatus {
+  BLOCKED
   TODO
   IN_PROGRESS
   DONE
@@ -209,6 +210,13 @@ model Meeting {
   highlights       Highlight[]
   shareLinks       ShareLink[]
   summaryVariants  MeetingSummaryVariant[]
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  decisions Decision[]
+  aiActions AIAction[]
+  commitments CommitmentHistory[]
+  @@unique([id, projectId])
+  @@index([projectId, startAt])
 
   @@index([workspaceId])
   @@unique([calendarConnectionId, externalEventId])
@@ -220,6 +228,8 @@ model Meeting {
 }
 
 model CalendarConnection {
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
   id String @id @default(uuid())
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -299,6 +309,20 @@ model MeetingSummary {
 }
 
 model ActionItem {
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  priority String @default("MEDIUM")
+  position Float @default(0)
+  version Int @default(0)
+  evidence Json @default("[]")
+  fingerprint String?
+  archivedAt DateTime?
+  deletedAt DateTime?
+  history CommitmentHistory[]
+  suggestions AIAction[] @relation("TargetTask")
+  @@unique([id, projectId])
+  @@unique([projectId, fingerprint])
+  @@index([projectId, status, position])
   id             String           @id @default(uuid())
   workspaceId    String
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -389,4 +413,131 @@ model MeetingSummaryVariant {
   @@unique([meetingId, type])
   @@index([status])
   @@map("meeting_summary_variants")
+}
+
+model InstanceState {
+ id String @id
+ userId String
+ workspaceId String
+ @@map("instance_state")
+}
+model Company {
+ id String @id @default(uuid())
+ name String
+ description String?
+ legacyWorkspaceId String? @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ projects Project[]
+ @@map("companies")
+}
+model Project {
+ id String @id @default(uuid())
+ companyId String
+ company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+ name String
+ description String?
+ status String @default("ACTIVE")
+ needsReview Boolean @default(false)
+ legacyKey String? @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ meetings Meeting[]
+ actionItems ActionItem[]
+ decisions Decision[]
+ conflicts DecisionConflict[]
+ aiActions AIAction[]
+ commitments CommitmentHistory[]
+ calendarConnections CalendarConnection[]
+ @@unique([companyId, name])
+ @@index([companyId, status])
+ @@map("projects")
+}
+model Decision {
+ id String @id @default(uuid())
+ projectId String
+ project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+ meetingId String
+ meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+ title String
+ description String @db.Text
+ status String @default("CONFIRMED")
+ originalStatus String @default("CONFIRMED")
+ fingerprint String
+ evidence Json
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ previousConflicts DecisionConflict[] @relation("PreviousDecision")
+ newConflicts DecisionConflict[] @relation("NewDecision")
+ events DecisionEvent[]
+ @@unique([id, projectId])
+ @@unique([meetingId, fingerprint])
+ @@index([projectId, createdAt])
+ @@map("decisions")
+}
+model DecisionConflict {
+ id String @id @default(uuid())
+ projectId String
+ project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+ previousDecisionId String
+ previousDecision Decision @relation("PreviousDecision", fields: [previousDecisionId], references: [id], onDelete: Restrict)
+ newDecisionId String
+ newDecision Decision @relation("NewDecision", fields: [newDecisionId], references: [id], onDelete: Restrict)
+ status String @default("PENDING")
+ explanation String @db.Text
+ createdAt DateTime @default(now())
+ resolvedAt DateTime?
+ @@unique([previousDecisionId, newDecisionId])
+ @@index([projectId, status])
+ @@map("decision_conflicts")
+}
+model DecisionEvent {
+ id String @id @default(uuid())
+ decisionId String
+ decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+ eventType String
+ evidence Json
+ createdAt DateTime @default(now())
+ @@index([decisionId, createdAt])
+ @@map("decision_events")
+}
+model AIAction {
+ id String @id @default(uuid())
+ projectId String
+ project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+ meetingId String
+ meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+ type String
+ title String
+ instructions String @db.Text
+ generatedContent String? @db.Text
+ status String @default("SUGGESTED")
+ sourceKey String
+ evidence Json @default("[]")
+ proposedChanges Json?
+ expectedVersion Int?
+ targetActionItemId String?
+ targetActionItem ActionItem? @relation("TargetTask", fields: [targetActionItemId], references: [id], onDelete: Restrict)
+ generationId String?
+ error String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([meetingId, sourceKey])
+ @@index([projectId, status])
+ @@map("ai_actions")
+}
+model CommitmentHistory {
+ id String @id @default(uuid())
+ projectId String
+ project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+ actionItemId String
+ actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Restrict)
+ meetingId String?
+ meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+ eventType String
+ evidence Json
+ createdAt DateTime @default(now())
+ @@index([actionItemId, createdAt])
+ @@index([projectId, meetingId])
+ @@map("commitment_history")
 }
