@@ -1,3 +1,4 @@
+import { PageSkeleton } from '../components/page-skeleton';
 import { createRoute, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { rootRoute } from './root';
@@ -6,6 +7,7 @@ import { apiFetchMeeting } from '../features/meetings/meetings-api';
 import { ApiError } from '../lib/api-client';
 import { EmptyState, Button } from '@meetflow/ui';
 import { AlertTriangle } from 'lucide-react';
+import { meetingKey } from '../features/meetings/use-meetings';
 
 export const meetingDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -16,26 +18,19 @@ export const meetingDetailRoute = createRoute({
 export function MeetingDetailPage() {
   const { meetingId } = useParams({ from: '/meetings/$meetingId' });
   const query = useQuery({
-    gcTime: 0,
-    staleTime: 0,
-    queryKey: ['meeting', meetingId],
-    queryFn: () => apiFetchMeeting(meetingId),
+    gcTime: 300_000,
+    staleTime: 30_000,
+    queryKey: meetingKey(meetingId),
+    queryFn: ({ signal }) => apiFetchMeeting(meetingId, signal),
     retry: false,
   });
-  if (query.isPending) {
+  if (query.isPending)
     return (
-      <div
-        role="status"
-        aria-label="Loading meeting details"
-        className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6"
-      >
-        <div className="h-8 w-48 animate-pulse rounded bg-muted/40" />
-        <div className="h-32 w-full animate-pulse rounded-lg border border-border/60 bg-muted/20" />
-        <div className="h-64 w-full animate-pulse rounded-lg border border-border/60 bg-muted/20" />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <PageSkeleton kind="detail" />
       </div>
     );
-  }
-  if (query.isError || !query.data) {
+  if (!query.data) {
     const notFound =
       query.error instanceof ApiError && query.error.status === 404;
     return (
@@ -65,15 +60,32 @@ export function MeetingDetailPage() {
   }
   const { meeting, raw } = query.data;
   return (
-    <MeetingDetailScaffold
-      key={meeting.id}
-      meeting={meeting}
-      meetingId={meetingId}
-      rawFilename={raw.transcripts?.[0]?.sourceFilename}
-      sourceFormat={raw.transcripts?.[0]?.sourceFormat}
-      onReload={() => {
-        void query.refetch();
-      }}
-    />
+    <>
+      {query.error && (
+        <div
+          role="alert"
+          className="mx-auto max-w-7xl px-6 pt-4 text-xs text-destructive"
+        >
+          Could not refresh meeting. {query.error.message}{' '}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void query.refetch()}
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
+      <MeetingDetailScaffold
+        key={meeting.id}
+        meeting={meeting}
+        meetingId={meetingId}
+        rawFilename={raw.transcripts?.[0]?.sourceFilename}
+        sourceFormat={raw.transcripts?.[0]?.sourceFormat}
+        onReload={() => {
+          void query.refetch();
+        }}
+      />
+    </>
   );
 }

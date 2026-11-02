@@ -1,15 +1,21 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
+import { renderWithQuery as render } from '../../test-utils';
 import { Sidebar } from './sidebar';
+vi.mock('../../features/actions/use-action-items', () => ({
+  useActionItems: () => [],
+}));
 
 // Mock TanStack Router
 vi.mock('@tanstack/react-router', () => {
   const React = require('react');
-  const Link = React.forwardRef(({ children, to, onClick, className, ...rest }: any, ref: any) => (
-    <a ref={ref} href={to} onClick={onClick} className={className} {...rest}>
-      {children}
-    </a>
-  ));
+  const Link = React.forwardRef(
+    ({ children, to, onClick, className, ...rest }: any, ref: any) => (
+      <a ref={ref} href={to} onClick={onClick} className={className} {...rest}>
+        {children}
+      </a>
+    ),
+  );
   Link.displayName = 'Link';
   return {
     Link,
@@ -41,7 +47,7 @@ describe('Sidebar Component', () => {
         onToggleCollapse={vi.fn()}
         mobileOpen={false}
         onCloseMobile={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByText('Overview')).toBeDefined();
@@ -60,7 +66,7 @@ describe('Sidebar Component', () => {
         onToggleCollapse={toggleSpy}
         mobileOpen={false}
         onCloseMobile={vi.fn()}
-      />
+      />,
     );
 
     const toggleBtn = screen.getByRole('button', { name: /collapse sidebar/i });
@@ -75,7 +81,7 @@ describe('Sidebar Component', () => {
         onToggleCollapse={vi.fn()}
         mobileOpen={false}
         onCloseMobile={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.queryByText('Overview')).toBeNull();
@@ -88,7 +94,7 @@ describe('Sidebar Component', () => {
         onToggleCollapse={vi.fn()}
         mobileOpen={false}
         onCloseMobile={vi.fn()}
-      />
+      />,
     );
 
     // Verify workspace link exists and has proper title attribute

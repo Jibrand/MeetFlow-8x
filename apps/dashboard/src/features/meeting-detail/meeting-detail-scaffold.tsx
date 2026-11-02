@@ -13,15 +13,11 @@ import {
   ErrorState,
   toast,
 } from '@meetflow/ui';
-import {
-  ArrowLeft,
-  Calendar,
-  AlertTriangle,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowLeft, Calendar, AlertTriangle, Sparkles } from 'lucide-react';
 import { MeetingDetailView } from './components/meeting-detail-view';
 import { useProcessingPoll } from './hooks/use-processing-poll';
 import { apiReprocessMeeting } from '../meetings/meetings-api';
+import { MeetingActions } from '../meetings/meeting-actions';
 
 export interface MeetingDetailScaffoldProps {
   meeting?: MeetingItem;
@@ -70,7 +66,10 @@ export function MeetingDetailScaffold({
   }
 
   // 2. Ready Meeting -> Full Meeting Intelligence Workspace
-  if (meeting.status === 'ready' || (meeting.status === 'cancelled' && meeting.summary)) {
+  if (
+    meeting.status === 'ready' ||
+    (meeting.status === 'cancelled' && meeting.summary)
+  ) {
     return (
       <MeetingDetailView
         meeting={meeting}
@@ -95,19 +94,29 @@ export function MeetingDetailScaffold({
     }
   };
 
-  const platformLabel = {
-    zoom: 'Zoom Call',
-    meet: 'Google Meet',
-    teams: 'Microsoft Teams',
-    upload: 'Transcript Upload',
-  }[meeting.platform] || 'Meeting';
+  const platformLabel =
+    {
+      zoom: 'Zoom Call',
+      meet: 'Google Meet',
+      teams: 'Microsoft Teams',
+      upload: 'Transcript Upload',
+    }[meeting.platform] || 'Meeting';
 
   // Stage labels mapping for UI
   const stageLabels: Record<string, { label: string; desc: string }> = {
     QUEUED: { label: 'Queued', desc: 'Waiting in BullMQ background queue' },
-    PARSING: { label: 'Parsing transcript', desc: 'Parsing speaker turns and timestamps' },
-    ANALYZING: { label: 'Analyzing with AI', desc: 'Extracting executive summary, decisions, and action items' },
-    FINALIZING: { label: 'Saving results', desc: 'Persisting structured intelligence to Neon database' },
+    PARSING: {
+      label: 'Parsing transcript',
+      desc: 'Parsing speaker turns and timestamps',
+    },
+    ANALYZING: {
+      label: 'Analyzing with AI',
+      desc: 'Extracting executive summary, decisions, and action items',
+    },
+    FINALIZING: {
+      label: 'Saving results',
+      desc: 'Persisting structured intelligence to Neon database',
+    },
     COMPLETED: { label: 'Ready', desc: 'Processing completed successfully' },
     FAILED: { label: 'Failed', desc: 'Processing encountered an error' },
   };
@@ -129,13 +138,17 @@ export function MeetingDetailScaffold({
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Back to Meetings</span>
           </Link>
+          <MeetingActions meeting={meeting} />
         </div>
 
         {/* Title, Badges, Metadata */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <MeetingStatusBadge status={meeting.status} />
-            <Badge variant="secondary" className="text-[10px] uppercase font-semibold">
+            <Badge
+              variant="secondary"
+              className="text-[10px] uppercase font-semibold"
+            >
               {platformLabel}
             </Badge>
             {meeting.tags.map((tag) => (
@@ -162,7 +175,9 @@ export function MeetingDetailScaffold({
         {/* Participants Row */}
         {meeting.participants.length > 0 && (
           <div className="flex items-center gap-2 pt-1">
-            <span className="text-label text-muted-foreground">Participants:</span>
+            <span className="text-label text-muted-foreground">
+              Participants:
+            </span>
             <div className="flex flex-wrap items-center gap-1.5">
               {meeting.participants.map((p) => (
                 <div
@@ -179,7 +194,12 @@ export function MeetingDetailScaffold({
       </div>
 
       {/* Case A: Failed Meeting */}
-      {meeting.status === 'cancelled' && <EmptyState title="Meeting cancelled" description="This event was cancelled in the connected calendar." />}
+      {meeting.status === 'cancelled' && (
+        <EmptyState
+          title="Meeting cancelled"
+          description="This event was cancelled in the connected calendar."
+        />
+      )}
       {meeting.status === 'failed' && (
         <ErrorState
           title="Meeting Recording Failed"
@@ -199,7 +219,9 @@ export function MeetingDetailScaffold({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-primary mx-auto mb-2 shadow-2xs">
               <Calendar className="h-5 w-5" />
             </div>
-            <CardTitle className="text-sm font-semibold">This Meeting is Scheduled</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              This Meeting is Scheduled
+            </CardTitle>
             <p className="text-xs text-muted-foreground max-w-md mx-auto pt-1 leading-relaxed">
               No transcript has been processed for this meeting. Scheduled for{' '}
               <strong className="text-foreground">
@@ -220,9 +242,12 @@ export function MeetingDetailScaffold({
             </div>
 
             <div className="space-y-1">
-              <CardTitle className="text-sm font-semibold">AI Intelligence In Progress</CardTitle>
+              <CardTitle className="text-sm font-semibold">
+                AI Intelligence In Progress
+              </CardTitle>
               <p className="text-xs text-muted-foreground max-w-md mx-auto pt-1 leading-relaxed">
-                MeetFlow is processing your transcript, extracting key takeaways, and building action items.
+                MeetFlow is processing your transcript, extracting key
+                takeaways, and building action items.
               </p>
               <div className="mt-2 flex items-center justify-center gap-2 text-xs text-amber-600 font-medium">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
@@ -231,11 +256,17 @@ export function MeetingDetailScaffold({
             </div>
 
             {/* Stage Progress Bar (0 - 100%) */}
-            {poll.error && <p role="alert" className="text-xs text-destructive">Status updates unavailable: {poll.error}. Retrying…</p>}
+            {poll.error && (
+              <p role="alert" className="text-xs text-destructive">
+                Status updates unavailable: {poll.error}. Retrying…
+              </p>
+            )}
             <div className="w-full space-y-1.5 pt-2">
               <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
                 <span>Stage: {currentStageInfo.label}</span>
-                <span className="font-mono text-amber-600 font-semibold">{poll.progress}%</span>
+                <span className="font-mono text-amber-600 font-semibold">
+                  {poll.progress}%
+                </span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
@@ -247,16 +278,24 @@ export function MeetingDetailScaffold({
 
             {/* Stages Step Indicators */}
             <div className="grid grid-cols-4 w-full gap-2 pt-1 text-[10px] text-muted-foreground">
-              <div className={`p-1.5 rounded border text-center ${poll.progress >= 5 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}>
+              <div
+                className={`p-1.5 rounded border text-center ${poll.progress >= 5 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}
+              >
                 1. Queued
               </div>
-              <div className={`p-1.5 rounded border text-center ${poll.progress >= 20 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}>
+              <div
+                className={`p-1.5 rounded border text-center ${poll.progress >= 20 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}
+              >
                 2. Parsing
               </div>
-              <div className={`p-1.5 rounded border text-center ${poll.progress >= 45 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}>
+              <div
+                className={`p-1.5 rounded border text-center ${poll.progress >= 45 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}
+              >
                 3. Analyzing
               </div>
-              <div className={`p-1.5 rounded border text-center ${poll.progress >= 85 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}>
+              <div
+                className={`p-1.5 rounded border text-center ${poll.progress >= 85 ? 'border-amber-500/40 bg-amber-500/5 text-amber-600 font-semibold' : 'border-border/60'}`}
+              >
                 4. Saving
               </div>
             </div>

@@ -1,3 +1,4 @@
+import { PageSkeleton } from '../../components/page-skeleton';
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
 import {
@@ -12,41 +13,33 @@ import {
   CheckSquare,
   CheckCircle2,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useActionItemsQuery, parseDueDate } from '../actions/use-action-items';
-import { toast } from '@meetflow/ui';
+import { useMeetingsQuery, workspaceScope } from '../meetings/use-meetings';
+import { useToggleActionItem } from '../actions/use-toggle-action-item';
 import { formatDuration, formatMeetingDate } from '../../lib/meeting-format';
 import { KpiCard, SectionCard } from './overview-cards';
 import { MeetingsOverTimeChart, ActionItemDonut } from './overview-charts';
 import {
   apiFetchOverviewStats,
-  apiFetchMeetings,
-  apiUpdateActionItem,
   mapBackendMeetingToItem,
   mapBackendActionItem,
 } from '../meetings/meetings-api';
 import { AddMeetingDialog } from '../meetings/add-meeting-dialog';
 
 export function OverviewView() {
-  const queryClient = useQueryClient();
+  const taskToggle = useToggleActionItem();
   const now = React.useMemo(() => new Date(), []);
   const stats = useQuery({
-    queryKey: ['overview'],
-    queryFn: apiFetchOverviewStats,
+    queryKey: ['overview', workspaceScope()],
+    queryFn: ({ signal }) => apiFetchOverviewStats(signal),
     retry: false,
-    gcTime: 0,
-    staleTime: 0,
-    refetchInterval: 10000,
+    gcTime: 300_000,
+    staleTime: 30_000,
   });
-  const meetings = useQuery({
-    queryKey: ['meetings', 'overview'],
-    queryFn: () => apiFetchMeetings(),
-    retry: false,
-    gcTime: 0,
-    staleTime: 0,
-    refetchInterval: 10000,
-  });
+  const meetings = useMeetingsQuery();
   const items = useActionItemsQuery();
   const loading = stats.isPending || meetings.isPending || items.isPending;
   const error = stats.error || meetings.error || items.error;
@@ -57,24 +50,11 @@ export function OverviewView() {
   };
   if (loading)
     return (
-      <div
-        role="status"
-        aria-label="Loading overview"
-        className="max-w-6xl mx-auto p-6 space-y-6"
-      >
-        <div className="h-8 w-56 animate-pulse rounded bg-muted/40" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map((n) => (
-            <div
-              key={n}
-              className="h-28 animate-pulse rounded-lg bg-muted/30"
-            />
-          ))}
-        </div>
-        <div className="h-64 animate-pulse rounded-lg bg-muted/30" />
+      <div className="max-w-6xl mx-auto p-6">
+        <PageSkeleton kind="overview" />
       </div>
     );
-  if (error || !stats.data)
+  if (!stats.data || !meetings.data || !items.data)
     return (
       <div role="alert" className="p-6 space-y-3">
         <p>{error?.message || 'Unable to load overview.'}</p>
@@ -92,18 +72,7 @@ export function OverviewView() {
   const overdueCount = dbStats.overdueActionItems;
   const recentMeetings = dbStats.recentMeetings.map(mapBackendMeetingToItem);
   const attentionItems = dbStats.attentionItems.map(mapBackendActionItem);
-  const handleComplete = async (id: string, completed: boolean) => {
-    try {
-      await apiUpdateActionItem(id, { status: completed ? 'DONE' : 'TODO' });
-      await queryClient.invalidateQueries({ queryKey: ['action-items'] });
-      await queryClient.invalidateQueries({ queryKey: ['overview'] });
-      await queryClient.invalidateQueries({ queryKey: ['meeting'] });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Unable to save task.',
-      );
-    }
-  };
+  const handleComplete = taskToggle.toggle;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
@@ -131,9 +100,21 @@ export function OverviewView() {
             />
             <span>Refresh</span>
           </Button>
-          <AddMeetingDialog onMeetingCreated={loadStats} />
+          <AddMeetingDialog />
         </div>
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-xs"
+        >
+          <span>Could not refresh overview. {error.message}</span>
+          <Button variant="outline" size="sm" onClick={loadStats}>
+            Try Again
+          </Button>
+        </div>
+      )}
 
       {/* 2. Four KPI Cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -246,10 +227,17 @@ export function OverviewView() {
                     <div className="mt-0.5">
                       <Checkbox
                         checked={item.completed}
+                        disabled={taskToggle.pendingIds.has(item.id)}
+                        aria-label={`Complete ${item.title}`}
                         onCheckedChange={() => {
                           void handleComplete(item.id, !item.completed);
                         }}
                       />
+                      {taskToggle.pendingIds.has(item.id) && (
+                        <span role="status" aria-label="Saving task">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        </span>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-foreground">

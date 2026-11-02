@@ -3,7 +3,7 @@ import { Checkbox } from '../checkbox';
 import { Badge } from '../badge';
 import { SpeakerAvatar } from './speaker-avatar';
 import { TimestampLink } from './timestamp-link';
-import { Calendar } from 'lucide-react';
+import { Calendar, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 export type ActionItemPriority = 'low' | 'medium' | 'high';
@@ -18,6 +18,7 @@ export interface ActionItemRowProps extends React.HTMLAttributes<HTMLDivElement>
   priority?: ActionItemPriority;
   timestampSeconds?: number;
   onSeek?: (seconds: number) => void;
+  pending?: boolean;
 }
 
 export function ActionItemRow({
@@ -29,6 +30,7 @@ export function ActionItemRow({
   priority,
   timestampSeconds,
   onSeek,
+  pending = false,
   className,
   ...props
 }: ActionItemRowProps) {
@@ -44,20 +46,28 @@ export function ActionItemRow({
       className={cn(
         'group flex items-center justify-between gap-3 rounded-md border border-border/60 bg-card px-3 py-2 text-xs transition-colors hover:border-border hover:bg-muted/30 select-none',
         completed && 'opacity-60 bg-muted/20',
-        className
+        className,
       )}
       {...props}
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
         <Checkbox
           checked={completed}
+          disabled={pending}
+          aria-label={`Complete ${title}`}
+          aria-busy={pending}
           onCheckedChange={(val) => onToggleCompleted?.(Boolean(val))}
           className="h-4 w-4 shrink-0 transition-transform active:scale-90"
         />
+        {pending && (
+          <span role="status" aria-label="Saving task">
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          </span>
+        )}
         <span
           className={cn(
             'truncate font-medium text-foreground transition-all',
-            completed && 'line-through text-muted-foreground'
+            completed && 'line-through text-muted-foreground',
           )}
         >
           {title}
@@ -75,8 +85,8 @@ export function ActionItemRow({
               priority === 'high'
                 ? 'destructive'
                 : priority === 'medium'
-                ? 'warning'
-                : 'secondary'
+                  ? 'warning'
+                  : 'secondary'
             }
             className="text-[9px] uppercase px-1.5 py-0"
           >

@@ -1,6 +1,13 @@
 import { ActionItemData } from '../../../types/meeting';
 import { Button, Checkbox, Badge, SpeakerAvatar } from '@meetflow/ui';
-import { CheckSquare, Plus, Edit2, Trash2, Calendar } from 'lucide-react';
+import {
+  CheckSquare,
+  Plus,
+  Edit2,
+  Trash2,
+  Calendar,
+  Loader2,
+} from 'lucide-react';
 import { formatSecondsToTime } from '../lib/export-utils';
 
 export interface ActionItemsPanelProps {
@@ -10,6 +17,7 @@ export interface ActionItemsPanelProps {
   onOpenCreate: () => void;
   onEdit: (item: ActionItemData) => void;
   onDelete: (id: string) => void;
+  pendingIds?: ReadonlySet<string>;
 }
 
 export function ActionItemsPanel({
@@ -19,6 +27,7 @@ export function ActionItemsPanel({
   onOpenCreate,
   onEdit,
   onDelete,
+  pendingIds,
 }: ActionItemsPanelProps) {
   const openCount = items.filter((i) => !i.completed).length;
 
@@ -56,9 +65,19 @@ export function ActionItemsPanel({
               <div className="flex items-start gap-2.5 flex-1 min-w-0 pt-0.5">
                 <Checkbox
                   checked={item.completed}
-                  onCheckedChange={(val) => onToggleComplete(item.id, Boolean(val))}
+                  disabled={pendingIds?.has(item.id)}
+                  aria-label={`Complete ${item.title}`}
+                  aria-busy={pendingIds?.has(item.id)}
+                  onCheckedChange={(val) =>
+                    onToggleComplete(item.id, Boolean(val))
+                  }
                   className="h-4 w-4 shrink-0 transition-transform active:scale-90"
                 />
+                {pendingIds?.has(item.id) && (
+                  <span role="status" aria-label="Saving task">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  </span>
+                )}
                 <div className="space-y-1 min-w-0">
                   <p
                     className={`text-xs font-medium leading-snug transition-all ${
@@ -90,8 +109,8 @@ export function ActionItemsPanel({
                         item.priority === 'high'
                           ? 'destructive'
                           : item.priority === 'medium'
-                          ? 'warning'
-                          : 'secondary'
+                            ? 'warning'
+                            : 'secondary'
                       }
                       className="text-[9px] uppercase px-1 py-0 font-semibold"
                     >
@@ -138,7 +157,8 @@ export function ActionItemsPanel({
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
-          No action items recorded for this meeting. Click "New Task" to create one.
+          No action items recorded for this meeting. Click "New Task" to create
+          one.
         </div>
       )}
     </div>

@@ -99,6 +99,37 @@ All client-facing endpoints are namespaced under the versioned prefix:
 
 ## 4. OpenAPI 3.1 Specification
 
+### Meeting editing and deletion
+
+`PATCH /meetings/:id` accepts optional `participants` alongside title, description, startAt, endAt, timezone and meetingStatus. Omit participants to retain them; send an array to replace them atomically, or `[]` to clear them. Names are trimmed, limited to 100 characters, and case-insensitively unique; at most 200 participants are accepted. Each participant may include nullable email and role. Create uses the same validation. The dashboard exposes keyboard chips and real edit/delete dialogs; DELETE cascades meeting-owned records and removes its private recording. All operations remain workspace-authorized.
+
+### Intelligence, media and calendar endpoints
+
+| Method | Path (under `/api/v1`) | Behavior |
+| :--- | :--- | :--- |
+| POST | `/ask` | Authenticated workspace retrieval and live OpenAI answer; optional meetingId and up to ten history messages. Returns actual stored citations and bounded retrieval scope. Twenty requests/user/minute. |
+| POST | `/meetings/media` | Authenticated multipart `file` and JSON-encoded `metadata` matching Create Meeting fields. Maximum 512 MiB, five uploads/user/minute; saves privately and queues the existing worker. |
+| GET | `/meetings/:id/media` | Workspace-authorized private media streaming with range support. |
+| GET | `/integrations/calendar` | User/workspace connection status, configuration readiness, last sync, safe errors. Never returns tokens. |
+| POST | `/integrations/calendar/authorize` | Empty JSON object; returns Google consent URL and sets signed state/PKCE cookie. |
+| GET | `/integrations/calendar/callback` | Validates signed ten-minute state cookie, PKCE and membership, encrypts tokens, redirects to Settings. |
+| POST | `/integrations/calendar/sync` | Empty JSON object; runs primary-calendar import with an incremental cursor and concurrency lease. |
+| POST | `/integrations/calendar/disconnect` | Empty JSON object; revokes authorization/removes connection while preserving imported meetings. |
+
+The worker normalizes audio/video through FFmpeg into 15-minute mono MP3 chunks, calls OpenAI with `OPENAI_API_KEY` and `OPENAI_TRANSCRIPTION_MODEL` (default `gpt-transcribe`), and then reuses the TXT parsing/intelligence pipeline. Transcription timestamps are chunk boundaries, not word alignment; speaker diarization and a meeting-joining recorder are not implemented. Private media lives in `MEDIA_STORAGE_DIR` (default root `.local-media`, ignored by Git). Separate production API and worker processes require the same persistent media volume and FFmpeg installation/binary. Invalid/no-audio recordings and provider failures become actionable processing errors.
+
+Long transcripts use bounded map/reduce analysis instead of the previous 80,000-character truncation. All chunks contribute decisions, topics and action items; progress updates continue between provider calls. Ask retrieves bounded recent/relevant sources, not an exhaustive semantic search of every historical meeting.
+
+Google setup: configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a 32-byte `CALENDAR_ENCRYPTION_KEY` locally; register `http://localhost:4000/api/v1/integrations/calendar/callback` for development. In production configure the matching redirect/frontend URLs. Connect and consent from Settings. Primary-calendar sync is read-only: initial events span one year before/after today, subsequent imports use incremental tokens, expired tokens trigger a full refresh, and cancellations retain stored notes. An API timer checks eligible connections every minute with a five-minute sync interval. Google consent and live account synchronization remain unverified until an account is connected.
+
+The additive media/calendar schema was applied to the existing Neon database with `pnpm --filter @meetflow/api exec tsx scripts/apply-feature-schema.ts`. The checked-in migration assumes the pre-existing base schema; it is not a fresh-database baseline. Never reset existing data to install these additions.
+
+### Dashboard caching and verification
+
+Meeting lists, detail, action items and statistics use workspace/user-scoped React Query caches (30-second freshness, five-minute retention). Processing alone polls every three seconds. Mutations invalidate dependent data; task toggles update cached rows/statistics immediately, show pending state, roll back only the failed item, and revalidate after concurrent toggles settle. Network errors remain visible even while real cached content is retained. Calendar, Meetings, Detail, Action Items and Overview use shaped skeletons rather than seeded fallbacks.
+
+List/count queries run concurrently, overview duration uses a database aggregate, and Prisma 6 `relationJoins` avoids separate remote reads per included relation. Workspace membership is checked on every request; an accidental second check on all meeting routes was removed. See [verification results](../testing/ui-backend-audit.md) for measured results and their limits.
+
 ### Meeting processing outcomes
 
 - `POST /meetings`, transcript upload, and reprocess save data independently from queue availability. `queueStatus: REDIS_UNAVAILABLE` means the persisted meeting and processing job are `FAILED`; it does not mean the job is waiting for an unimplemented database poller. Creation still returns 201 because the meeting was saved.

@@ -3,6 +3,7 @@ import { useRouterState } from '@tanstack/react-router';
 import { Sidebar } from './sidebar';
 import { TopHeader } from './top-header';
 import { CommandPalette } from './command-palette';
+import { useWorkspaceProcessingSync } from '../../features/meetings/use-meetings';
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ export interface AppShellProps {
 const COLLAPSE_KEY = 'meetflow-sidebar-collapsed';
 
 export function AppShell({ children }: AppShellProps) {
+  useWorkspaceProcessingSync();
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
     try {
       return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || 'false');

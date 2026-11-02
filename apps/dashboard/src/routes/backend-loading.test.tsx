@@ -19,6 +19,9 @@ import { ApiError } from '../lib/api-client';
 import type { MeetingItem } from '../types/meeting';
 
 const route = vi.hoisted(() => ({ id: 'real-meeting' }));
+vi.mock('../features/auth/lib/auth-adapter', () => ({
+  authAdapter: { getUser: () => ({ id: 'test', workspaceId: 'workspace' }) },
+}));
 vi.mock('./root', () => ({ rootRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   createRoute: (options: unknown) => options,

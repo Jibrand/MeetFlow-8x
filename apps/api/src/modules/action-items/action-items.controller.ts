@@ -10,7 +10,11 @@ export class ActionItemsController {
   /**
    * GET /api/v1/action-items
    */
-  async listActionItems(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listActionItems(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const query = ListActionItemsQuerySchema.parse(req.query);
@@ -26,11 +30,10 @@ export class ActionItemsController {
         ];
       }
 
-      const total = await prisma.actionItem.count({ where });
-      const totalPages = Math.ceil(total / query.limit) || 1;
+      const totalPromise = prisma.actionItem.count({ where });
       const skip = (query.page - 1) * query.limit;
 
-      const items = await prisma.actionItem.findMany({
+      const itemsPromise = prisma.actionItem.findMany({
         where,
         skip,
         take: query.limit,
@@ -46,6 +49,8 @@ export class ActionItemsController {
         },
       });
 
+      const [total, items] = await Promise.all([totalPromise, itemsPromise]);
+      const totalPages = Math.ceil(total / query.limit) || 1;
       res.status(200).json({
         success: true,
         data: {
@@ -72,7 +77,11 @@ export class ActionItemsController {
             totalPages,
           },
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -82,7 +91,11 @@ export class ActionItemsController {
   /**
    * POST /api/v1/action-items
    */
-  async createActionItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async createActionItem(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const input = CreateActionItemSchema.parse(req.body);
@@ -95,8 +108,15 @@ export class ActionItemsController {
         if (!meeting) {
           res.status(404).json({
             success: false,
-            error: { code: 'MEETING_NOT_FOUND', message: 'Target meeting not found in workspace.' },
-            meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+            error: {
+              code: 'MEETING_NOT_FOUND',
+              message: 'Target meeting not found in workspace.',
+            },
+            meta: {
+              requestId: req.id,
+              timestamp: new Date().toISOString(),
+              version: 'v1',
+            },
           });
           return;
         }
@@ -130,7 +150,11 @@ export class ActionItemsController {
           ...item,
           meetingTitle: item.meeting?.title || null,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -140,7 +164,11 @@ export class ActionItemsController {
   /**
    * PATCH /api/v1/action-items/:id
    */
-  async updateActionItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async updateActionItem(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -153,8 +181,15 @@ export class ActionItemsController {
       if (!existing) {
         res.status(404).json({
           success: false,
-          error: { code: 'ACTION_ITEM_NOT_FOUND', message: 'Action item not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'ACTION_ITEM_NOT_FOUND',
+            message: 'Action item not found.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -163,10 +198,18 @@ export class ActionItemsController {
         where: { id },
         data: {
           ...(input.title ? { title: input.title } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.assigneeName !== undefined ? { assigneeName: input.assigneeName } : {}),
-          ...(input.assigneeUserId !== undefined ? { assigneeUserId: input.assigneeUserId } : {}),
-          ...(input.dueDate !== undefined ? { dueDate: input.dueDate ? new Date(input.dueDate) : null } : {}),
+          ...(input.description !== undefined
+            ? { description: input.description }
+            : {}),
+          ...(input.assigneeName !== undefined
+            ? { assigneeName: input.assigneeName }
+            : {}),
+          ...(input.assigneeUserId !== undefined
+            ? { assigneeUserId: input.assigneeUserId }
+            : {}),
+          ...(input.dueDate !== undefined
+            ? { dueDate: input.dueDate ? new Date(input.dueDate) : null }
+            : {}),
           ...(input.status ? { status: input.status } : {}),
         },
         include: {
@@ -185,7 +228,11 @@ export class ActionItemsController {
           ...updated,
           meetingTitle: updated.meeting?.title || null,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -195,7 +242,11 @@ export class ActionItemsController {
   /**
    * DELETE /api/v1/action-items/:id
    */
-  async deleteActionItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async deleteActionItem(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -207,8 +258,15 @@ export class ActionItemsController {
       if (!existing) {
         res.status(404).json({
           success: false,
-          error: { code: 'ACTION_ITEM_NOT_FOUND', message: 'Action item not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'ACTION_ITEM_NOT_FOUND',
+            message: 'Action item not found.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -220,7 +278,11 @@ export class ActionItemsController {
       res.status(200).json({
         success: true,
         data: { id, deleted: true },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);

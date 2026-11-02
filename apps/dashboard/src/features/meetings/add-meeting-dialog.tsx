@@ -1,4 +1,7 @@
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ParticipantChips, type ParticipantInput } from './participant-chips';
+import { invalidateMeetingData } from './use-meetings';
 import {
   Dialog,
   DialogContent,
@@ -35,8 +38,11 @@ export interface AddMeetingDialogProps {
 }
 
 export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'transcript' | 'recording'>('transcript');
+  const [activeTab, setActiveTab] = React.useState<'transcript' | 'recording'>(
+    'transcript',
+  );
 
   // Form Fields
   const [title, setTitle] = React.useState('');
@@ -47,14 +53,22 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
   });
   const [startTime, setStartTime] = React.useState('10:00');
   const [endTime, setEndTime] = React.useState('10:45');
-  const [timezone] = React.useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  const [participantsText, setParticipantsText] = React.useState('');
-  const [meetingStatus, setMeetingStatus] = React.useState<'SCHEDULED' | 'COMPLETED'>('SCHEDULED');
+  const [timezone] = React.useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  );
+  const [participants, setParticipants] = React.useState<ParticipantInput[]>(
+    [],
+  );
+  const [meetingStatus, setMeetingStatus] = React.useState<
+    'SCHEDULED' | 'COMPLETED'
+  >('SCHEDULED');
 
   // File Upload State
   const [mediaFile, setMediaFile] = React.useState<File | null>(null);
   const [transcriptFile, setTranscriptFile] = React.useState<File | null>(null);
-  const [transcriptContent, setTranscriptContent] = React.useState<string | null>(null);
+  const [transcriptContent, setTranscriptContent] = React.useState<
+    string | null
+  >(null);
   const [fileError, setFileError] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -68,7 +82,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
     setTranscriptFile(null);
     setTranscriptContent(null);
     setFileError(null);
-    setParticipantsText('');
+    setParticipants([]);
     setMeetingStatus('SCHEDULED');
   }, []);
 
@@ -84,7 +98,9 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
     if (!ALLOWED_TRANSCRIPT_EXTENSIONS.includes(ext)) {
       setTranscriptFile(null);
       setTranscriptContent(null);
-      setFileError(`Unsupported format "${ext}". Allowed: ${ALLOWED_TRANSCRIPT_EXTENSIONS.join(', ')}`);
+      setFileError(
+        `Unsupported format "${ext}". Allowed: ${ALLOWED_TRANSCRIPT_EXTENSIONS.join(', ')}`,
+      );
       return;
     }
 
@@ -105,7 +121,9 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
       setMeetingStatus('COMPLETED');
     };
     reader.onerror = () => {
-      setFileError('Failed to read file content. Please check file encoding (UTF-8 recommended).');
+      setFileError(
+        'Failed to read file content. Please check file encoding (UTF-8 recommended).',
+      );
     };
     reader.readAsText(file);
   };
@@ -142,20 +160,21 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
       return;
     }
 
-    if (activeTab === 'recording' && !mediaFile) { toast.error('Choose a recording first.'); return; }
+    if (activeTab === 'recording' && !mediaFile) {
+      toast.error('Choose a recording first.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const startDateTime = new Date(`${dateStr}T${startTime}:00`);
-      const endDateTime = endTime ? new Date(`${dateStr}T${endTime}:00`) : undefined;
-
-      const participants = participantsText
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .map((name) => ({ name }));
+      const endDateTime = endTime
+        ? new Date(`${dateStr}T${endTime}:00`)
+        : undefined;
 
       const ext = transcriptFile?.name.split('.').pop()?.toLowerCase();
-      const sourceFormat = (ext === 'srt' ? 'srt' : ext === 'vtt' ? 'vtt' : 'txt') as 'txt' | 'srt' | 'vtt';
+      const sourceFormat = (
+        ext === 'srt' ? 'srt' : ext === 'vtt' ? 'vtt' : 'txt'
+      ) as 'txt' | 'srt' | 'vtt';
 
       const payload = {
         title: title.trim(),
@@ -164,7 +183,9 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
         endAt: endDateTime ? endDateTime.toISOString() : undefined,
         timezone,
         meetingStatus,
-        sourceType: transcriptContent ? ('TRANSCRIPT_UPLOAD' as const) : ('MANUAL' as const),
+        sourceType: transcriptContent
+          ? ('TRANSCRIPT_UPLOAD' as const)
+          : ('MANUAL' as const),
         participants,
         transcript:
           activeTab === 'transcript' && transcriptContent && transcriptFile
@@ -176,10 +197,19 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
             : null,
       };
 
-      const created = activeTab === 'recording' && mediaFile ? await apiCreateMediaMeeting(mediaFile, { ...payload, endAt: undefined, transcript: null }) : await apiCreateMeeting(payload);
+      const created =
+        activeTab === 'recording' && mediaFile
+          ? await apiCreateMediaMeeting(mediaFile, {
+              ...payload,
+              endAt: undefined,
+              transcript: null,
+            })
+          : await apiCreateMeeting(payload);
 
       if (created.status === 'failed') {
-        toast.error('Meeting saved, but processing could not be queued. Restore Redis and retry from the meeting.');
+        toast.error(
+          'Meeting saved, but processing could not be queued. Restore Redis and retry from the meeting.',
+        );
       } else if (transcriptContent || mediaFile) {
         toast.success(`Meeting created! Background AI processing enqueued.`);
       } else {
@@ -188,6 +218,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
 
       setOpen(false);
       resetForm();
+      void invalidateMeetingData(queryClient);
       onMeetingCreated?.();
     } catch (err: any) {
       toast.error(err.message || 'Failed to create meeting.');
@@ -215,13 +246,16 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
           <DialogHeader>
             <DialogTitle>Add Meeting</DialogTitle>
             <DialogDescription>
-              Create a scheduled meeting or upload a conversation transcript for automated AI intelligence.
+              Create a scheduled meeting or upload a conversation transcript for
+              automated AI intelligence.
             </DialogDescription>
           </DialogHeader>
 
           <Tabs
             value={activeTab}
-            onValueChange={(val) => setActiveTab(val as 'transcript' | 'recording')}
+            onValueChange={(val) =>
+              setActiveTab(val as 'transcript' | 'recording')
+            }
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2">
@@ -291,20 +325,26 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
 
                 {/* Participants */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground flex items-center gap-1">
+                  <label
+                    htmlFor="create-participants"
+                    className="text-xs font-medium text-foreground flex items-center gap-1"
+                  >
                     <UserPlus className="h-3 w-3 text-muted-foreground" />
-                    Participants (comma-separated names)
+                    Participants
                   </label>
-                  <Input
-                    placeholder="Sarah Connor, Alex Rivera, Marcus Vance"
-                    value={participantsText}
-                    onChange={(e) => setParticipantsText(e.target.value)}
+                  <ParticipantChips
+                    id="create-participants"
+                    value={participants}
+                    onChange={setParticipants}
+                    disabled={isSubmitting}
                   />
                 </div>
 
                 {/* Description */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Description (optional)</label>
+                  <label className="text-xs font-medium text-foreground">
+                    Description (optional)
+                  </label>
                   <Input
                     placeholder="Meeting context or agenda notes"
                     value={description}
@@ -329,7 +369,8 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                             {transcriptFile.name}
                           </p>
                           <p className="text-[10px] text-muted-foreground">
-                            {(transcriptFile.size / 1024).toFixed(1)} KB • Ready for AI intelligence
+                            {(transcriptFile.size / 1024).toFixed(1)} KB • Ready
+                            for AI intelligence
                           </p>
                         </div>
                       </div>
@@ -407,8 +448,8 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                     {isSubmitting
                       ? 'Creating...'
                       : transcriptFile
-                      ? 'Create & Process'
-                      : 'Schedule Meeting'}
+                        ? 'Create & Process'
+                        : 'Schedule Meeting'}
                   </Button>
                 </DialogFooter>
               </form>
@@ -416,14 +457,97 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
 
             <TabsContent value="recording" className="space-y-4 pt-3">
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1"><label htmlFor="media-title" className="text-xs font-medium">Meeting title</label><Input id="media-title" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={255} /></div>
-                <div className="grid grid-cols-2 gap-3"><div><label htmlFor="media-date" className="text-xs">Date</label><Input id="media-date" type="date" value={dateStr} onChange={(event) => setDateStr(event.target.value)} required /></div><div><label htmlFor="media-time" className="text-xs">Start time</label><Input id="media-time" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></div></div>
-                <div className="rounded-lg border-2 border-dashed p-5 space-y-3"><label htmlFor="media-file" className="text-xs font-medium">Audio or video recording</label><Input id="media-file" type="file" accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,.ogg,.flac" disabled={isSubmitting} onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file && file.size > 512 * 1024 * 1024) { toast.error('Recordings must be 512 MB or smaller.'); event.target.value = ''; setMediaFile(null); return; }
-                  setMediaFile(file ?? null);
-                }} /><p className="text-xs text-muted-foreground">Up to 512 MB. Audio is transcribed automatically, then analyzed for summaries, decisions, and action items. Your recording stays private to this workspace.</p></div>
-                <DialogFooter><Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>Cancel</Button><Button type="submit" disabled={isSubmitting || !mediaFile || !title.trim()}>{isSubmitting ? 'Uploading…' : 'Upload & Process'}</Button></DialogFooter>
+                <div className="space-y-1">
+                  <label htmlFor="media-title" className="text-xs font-medium">
+                    Meeting title
+                  </label>
+                  <Input
+                    id="media-title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    required
+                    maxLength={255}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="media-date" className="text-xs">
+                      Date
+                    </label>
+                    <Input
+                      id="media-date"
+                      type="date"
+                      value={dateStr}
+                      onChange={(event) => setDateStr(event.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="media-time" className="text-xs">
+                      Start time
+                    </label>
+                    <Input
+                      id="media-time"
+                      type="time"
+                      value={startTime}
+                      onChange={(event) => setStartTime(event.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg border-2 border-dashed p-5 space-y-3">
+                  <label htmlFor="media-file" className="text-xs font-medium">
+                    Audio or video recording
+                  </label>
+                  <Input
+                    id="media-file"
+                    type="file"
+                    accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,.ogg,.flac"
+                    disabled={isSubmitting}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file && file.size > 512 * 1024 * 1024) {
+                        toast.error('Recordings must be 512 MB or smaller.');
+                        event.target.value = '';
+                        setMediaFile(null);
+                        return;
+                      }
+                      setMediaFile(file ?? null);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Up to 512 MB. Audio is transcribed automatically, then
+                    analyzed for summaries, decisions, and action items. Your
+                    recording stays private to this workspace.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="recording-participants" className="text-xs">
+                    Participants
+                  </label>
+                  <ParticipantChips
+                    id="recording-participants"
+                    value={participants}
+                    onChange={setParticipants}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleOpenChange(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || !mediaFile || !title.trim()}
+                  >
+                    {isSubmitting ? 'Uploading…' : 'Upload & Process'}
+                  </Button>
+                </DialogFooter>
               </form>
             </TabsContent>
           </Tabs>

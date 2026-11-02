@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetchMeetings } from '../../features/meetings/meetings-api';
+import { useMeetingsQuery } from '../../features/meetings/use-meetings';
 import {
   Dialog,
   DialogContent,
@@ -29,14 +28,7 @@ export interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = React.useState('');
   const navigate = useNavigate();
-  const meetingsQuery = useQuery({
-    queryKey: ['meetings', 'search'],
-    queryFn: () => apiFetchMeetings(),
-    enabled: open,
-    retry: false,
-    gcTime: 0,
-    staleTime: 0,
-  });
+  const meetingsQuery = useMeetingsQuery(open);
 
   // Reset query on open
   React.useEffect(() => {

@@ -15,13 +15,19 @@ export class MeetingsController {
    * POST /api/v1/meetings
    * Create meeting, optionally attach transcript and enqueue background processing.
    */
-  async createMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async createMeeting(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const userId = req.user!.userId;
       const input = CreateMeetingSchema.parse(req.body);
 
-      const hasTranscript = Boolean(input.transcript && input.transcript.rawText.trim());
+      const hasTranscript = Boolean(
+        input.transcript && input.transcript.rawText.trim(),
+      );
 
       const meeting = await prisma.$transaction(async (tx) => {
         const created = await tx.meeting.create({
@@ -56,7 +62,9 @@ export class MeetingsController {
               rawText: input.transcript.rawText,
               sourceFilename: input.transcript.sourceFilename,
               sourceFormat: input.transcript.sourceFormat,
-              parserVersion: transcriptParserService.constructor.name ? '1.0.0' : '1.0.0',
+              parserVersion: transcriptParserService.constructor.name
+                ? '1.0.0'
+                : '1.0.0',
             },
           });
         }
@@ -78,7 +86,9 @@ export class MeetingsController {
         success: true,
         data: {
           ...meeting,
-          ...(queueStatus === 'REDIS_UNAVAILABLE' ? { processingStatus: 'FAILED' } : {}),
+          ...(queueStatus === 'REDIS_UNAVAILABLE'
+            ? { processingStatus: 'FAILED' }
+            : {}),
           queueStatus,
         },
         meta: {
@@ -96,65 +106,78 @@ export class MeetingsController {
    * GET /api/v1/meetings/overview
    * Consolidated statistics for the Overview dashboard
    */
-  async getOverviewStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getOverviewStats(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const now = new Date();
 
-      const [totalMeetings, recordedMeetings, openItems, doneItems, overdueItems, recentMeetings, attentionItems] =
-        await Promise.all([
-          prisma.meeting.count({ where: { workspaceId } }),
-          prisma.meeting.count({
-            where: {
-              workspaceId,
-              processingStatus: { in: ['READY', 'QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'] },
+      const [
+        totalMeetings,
+        recordedMeetings,
+        openItems,
+        doneItems,
+        overdueItems,
+        recentMeetings,
+        attentionItems,
+        durationTotals,
+      ] = await Promise.all([
+        prisma.meeting.count({ where: { workspaceId } }),
+        prisma.meeting.count({
+          where: {
+            workspaceId,
+            processingStatus: {
+              in: ['READY', 'QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'],
             },
-          }),
-          prisma.actionItem.count({
-            where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
-          }),
-          prisma.actionItem.count({
-            where: { workspaceId, status: 'DONE' },
-          }),
-          prisma.actionItem.count({
-            where: {
-              workspaceId,
-              status: { in: ['TODO', 'IN_PROGRESS'] },
-              dueDate: { lt: now },
+          },
+        }),
+        prisma.actionItem.count({
+          where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
+        }),
+        prisma.actionItem.count({
+          where: { workspaceId, status: 'DONE' },
+        }),
+        prisma.actionItem.count({
+          where: {
+            workspaceId,
+            status: { in: ['TODO', 'IN_PROGRESS'] },
+            dueDate: { lt: now },
+          },
+        }),
+        prisma.meeting.findMany({
+          where: { workspaceId },
+          orderBy: { startAt: 'desc' },
+          take: 5,
+          include: {
+            participants: true,
+            summary: {
+              select: { overview: true },
             },
-          }),
-          prisma.meeting.findMany({
-            where: { workspaceId },
-            orderBy: { startAt: 'desc' },
-            take: 5,
-            include: {
-              participants: true,
-              summary: {
-                select: { overview: true },
-              },
-              _count: {
-                select: { actionItems: true },
-              },
+            _count: {
+              select: { actionItems: true },
             },
-          }),
-          prisma.actionItem.findMany({
-            where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
-            orderBy: { dueDate: 'asc' },
-            take: 5,
-            include: {
-              meeting: {
-                select: { id: true, title: true },
-              },
+          },
+        }),
+        prisma.actionItem.findMany({
+          where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
+          orderBy: { dueDate: 'asc' },
+          take: 5,
+          include: {
+            meeting: {
+              select: { id: true, title: true },
             },
-          }),
-        ]);
+          },
+        }),
+        prisma.meeting.aggregate({
+          where: { workspaceId },
+          _sum: { durationSeconds: true },
+        }),
+      ]);
 
-      // Calculate total duration in hours
-      const meetingsWithDuration = await prisma.meeting.findMany({
-        where: { workspaceId },
-        select: { durationSeconds: true },
-      });
-      const totalSeconds = meetingsWithDuration.reduce((acc, m) => acc + (m.durationSeconds || 0), 0);
+      const totalSeconds = durationTotals._sum.durationSeconds ?? 0;
       const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
 
       res.status(200).json({
@@ -166,10 +189,19 @@ export class MeetingsController {
           openActionItems: openItems,
           completedActionItems: doneItems,
           overdueActionItems: overdueItems,
-          recentMeetings: recentMeetings.map(({ mediaStorageKey: _key, ...meeting }) => ({ ...meeting, actionItemCount: meeting._count.actionItems })),
+          recentMeetings: recentMeetings.map(
+            ({ mediaStorageKey: _key, ...meeting }) => ({
+              ...meeting,
+              actionItemCount: meeting._count.actionItems,
+            }),
+          ),
           attentionItems,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -180,7 +212,11 @@ export class MeetingsController {
    * GET /api/v1/meetings
    * List meetings for the active workspace with pagination, filters, and counts.
    */
-  async listMeetings(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listMeetings(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const query = ListMeetingsQuerySchema.parse(req.query);
@@ -205,11 +241,10 @@ export class MeetingsController {
         if (query.endDate) where.startAt.lte = new Date(query.endDate);
       }
 
-      const total = await prisma.meeting.count({ where });
-      const totalPages = Math.ceil(total / query.limit) || 1;
+      const totalPromise = prisma.meeting.count({ where });
       const skip = (query.page - 1) * query.limit;
 
-      const meetings = await prisma.meeting.findMany({
+      const meetingsPromise = prisma.meeting.findMany({
         where,
         skip,
         take: query.limit,
@@ -234,6 +269,11 @@ export class MeetingsController {
         },
       });
 
+      const [total, meetings] = await Promise.all([
+        totalPromise,
+        meetingsPromise,
+      ]);
+      const totalPages = Math.ceil(total / query.limit) || 1;
       res.status(200).json({
         success: true,
         data: {
@@ -280,7 +320,11 @@ export class MeetingsController {
    * GET /api/v1/meetings/:id
    * Get complete meeting details.
    */
-  async getMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getMeeting(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -317,8 +361,15 @@ export class MeetingsController {
       if (!meeting) {
         res.status(404).json({
           success: false,
-          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found in this workspace.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          error: {
+            code: 'MEETING_NOT_FOUND',
+            message: 'Meeting not found in this workspace.',
+          },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -326,7 +377,11 @@ export class MeetingsController {
       res.status(200).json({
         success: true,
         data: { ...meeting, mediaStorageKey: undefined },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -337,7 +392,11 @@ export class MeetingsController {
    * PATCH /api/v1/meetings/:id
    * Update meeting metadata.
    */
-  async updateMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async updateMeeting(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -351,7 +410,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -360,12 +423,29 @@ export class MeetingsController {
         where: { id },
         data: {
           ...(input.title ? { title: input.title } : {}),
-          ...(input.participants !== undefined ? { participants: { deleteMany: {}, create: input.participants.map((participant) => ({ name: participant.name, email: participant.email || null, role: participant.role || null })) } } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.participants !== undefined
+            ? {
+                participants: {
+                  deleteMany: {},
+                  create: input.participants.map((participant) => ({
+                    name: participant.name,
+                    email: participant.email || null,
+                    role: participant.role || null,
+                  })),
+                },
+              }
+            : {}),
+          ...(input.description !== undefined
+            ? { description: input.description }
+            : {}),
           ...(input.startAt ? { startAt: new Date(input.startAt) } : {}),
-          ...(input.endAt !== undefined ? { endAt: input.endAt ? new Date(input.endAt) : null } : {}),
+          ...(input.endAt !== undefined
+            ? { endAt: input.endAt ? new Date(input.endAt) : null }
+            : {}),
           ...(input.timezone ? { timezone: input.timezone } : {}),
-          ...(input.meetingStatus ? { meetingStatus: input.meetingStatus } : {}),
+          ...(input.meetingStatus
+            ? { meetingStatus: input.meetingStatus }
+            : {}),
         },
         include: {
           participants: true,
@@ -375,7 +455,11 @@ export class MeetingsController {
       res.status(200).json({
         success: true,
         data: { ...updated, mediaStorageKey: undefined },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -386,7 +470,11 @@ export class MeetingsController {
    * DELETE /api/v1/meetings/:id
    * Delete meeting.
    */
-  async deleteMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async deleteMeeting(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -399,7 +487,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -412,7 +504,11 @@ export class MeetingsController {
       res.status(200).json({
         success: true,
         data: { id, deleted: true },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -423,7 +519,11 @@ export class MeetingsController {
    * POST /api/v1/meetings/:id/transcript
    * Upload or attach transcript to an existing meeting and enqueue processing.
    */
-  async uploadTranscript(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async uploadTranscript(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -437,7 +537,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -474,7 +578,11 @@ export class MeetingsController {
           sourceFormat: input.sourceFormat,
           queueStatus: queueResult.status,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -485,7 +593,11 @@ export class MeetingsController {
    * GET /api/v1/meetings/:id/transcript
    * Get raw transcript and segments.
    */
-  async getTranscript(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getTranscript(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -507,7 +619,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -522,7 +638,11 @@ export class MeetingsController {
           transcript: latestTranscript,
           segments: meeting.segments,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -533,7 +653,11 @@ export class MeetingsController {
    * GET /api/v1/meetings/:id/processing
    * Polling endpoint: Get live background processing status.
    */
-  async getProcessingStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getProcessingStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -555,7 +679,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -564,7 +692,11 @@ export class MeetingsController {
       // Prisma may load the parent and relation in separate queries while a stage commits.
       // The job row carries the coherent stage/progress/terminal result for this response.
       const processingStatus = latestJob
-        ? latestJob.status === 'COMPLETED' ? 'READY' : latestJob.status === 'FAILED' ? 'FAILED' : latestJob.stage
+        ? latestJob.status === 'COMPLETED'
+          ? 'READY'
+          : latestJob.status === 'FAILED'
+            ? 'FAILED'
+            : latestJob.stage
         : meeting.processingStatus;
 
       // Estimated progress map by stage
@@ -579,7 +711,8 @@ export class MeetingsController {
       };
 
       const stage = latestJob?.stage || processingStatus;
-      const progress = latestJob?.progress ?? (stageProgressMap[processingStatus] || 0);
+      const progress =
+        latestJob?.progress ?? (stageProgressMap[processingStatus] || 0);
 
       res.status(200).json({
         success: true,
@@ -593,7 +726,11 @@ export class MeetingsController {
           startedAt: latestJob?.startedAt ?? null,
           completedAt: latestJob?.completedAt ?? null,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);
@@ -604,7 +741,11 @@ export class MeetingsController {
    * POST /api/v1/meetings/:id/reprocess
    * Trigger reprocessing for a meeting with existing transcript.
    */
-  async reprocessMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async reprocessMeeting(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const workspaceId = req.workspaceId!;
       const { id } = req.params;
@@ -622,7 +763,11 @@ export class MeetingsController {
         res.status(404).json({
           success: false,
           error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
@@ -634,14 +779,22 @@ export class MeetingsController {
             code: 'NO_TRANSCRIPT_TO_REPROCESS',
             message: 'Cannot reprocess meeting without an uploaded transcript.',
           },
-          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+          meta: {
+            requestId: req.id,
+            timestamp: new Date().toISOString(),
+            version: 'v1',
+          },
         });
         return;
       }
 
       // Claim only terminal/idle meetings. A concurrent retry must not reset a running job.
       await prisma.meeting.updateMany({
-        where: { id, workspaceId, processingStatus: { in: ['READY', 'FAILED', 'NOT_STARTED'] } },
+        where: {
+          id,
+          workspaceId,
+          processingStatus: { in: ['READY', 'FAILED', 'NOT_STARTED'] },
+        },
         data: { processingStatus: 'QUEUED' },
       });
       const queueResult = await enqueueMeetingProcessing({
@@ -653,10 +806,15 @@ export class MeetingsController {
         success: true,
         data: {
           meetingId: id,
-          processingStatus: queueResult.status === 'REDIS_UNAVAILABLE' ? 'FAILED' : 'QUEUED',
+          processingStatus:
+            queueResult.status === 'REDIS_UNAVAILABLE' ? 'FAILED' : 'QUEUED',
           queueStatus: queueResult.status,
         },
-        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
       });
     } catch (err) {
       next(err);

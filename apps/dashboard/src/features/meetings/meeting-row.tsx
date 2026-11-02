@@ -1,17 +1,13 @@
 import { Link } from '@tanstack/react-router';
 import { MeetingItem } from '../../types/meeting';
+import { MeetingStatusBadge } from '@meetflow/ui';
+import { MeetingActions } from './meeting-actions';
+import { Video, CheckSquare, Bookmark } from 'lucide-react';
 import {
-  MeetingStatusBadge,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  Button,
-  toast,
-} from '@meetflow/ui';
-import { Video, MoreHorizontal, CheckSquare, Bookmark, Share2 } from 'lucide-react';
-import { formatDuration, formatMeetingDate, PLATFORM_LABEL } from '../../lib/meeting-format';
+  formatDuration,
+  formatMeetingDate,
+  PLATFORM_LABEL,
+} from '../../lib/meeting-format';
 import { ParticipantOverflow } from '../meeting-detail/components/participant-overflow';
 
 export interface MeetingRowProps {
@@ -73,47 +69,17 @@ export function MeetingRow({ meeting }: MeetingRowProps) {
       {/* Right Column: Avatars, Status, Actions */}
       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border">
         {/* Participant Overflow Stack */}
-        <ParticipantOverflow participants={meeting.participants} maxVisible={4} size="xs" />
+        <ParticipantOverflow
+          participants={meeting.participants}
+          maxVisible={4}
+          size="xs"
+        />
 
         {/* Status Badge */}
         <MeetingStatusBadge status={meeting.status} />
 
         {/* Action Dropdown Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              aria-label="Meeting actions"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              onClick={() => {
-                navigator.clipboard?.writeText(
-                  `${window.location.origin}/meetings/${meeting.id}`
-                );
-                toast.success('Meeting link copied to clipboard!');
-              }}
-            >
-              <Share2 className="mr-2 h-3.5 w-3.5" />
-              <span>Copy Link</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.info('Exporting meeting summary...')}>
-              Export Summary
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => toast.error('Delete simulated in seed mode')}
-            >
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <MeetingActions meeting={meeting} />
       </div>
     </div>
   );

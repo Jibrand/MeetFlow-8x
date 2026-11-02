@@ -325,8 +325,20 @@ paths:
                 startAt: { type: string, format: date-time }
                 endAt: { type: string, format: date-time }
                 timezone: { type: string }
-                meetingStatus: { type: string, enum: [SCHEDULED, COMPLETED, CANCELLED] }
-                sourceType: { type: string, enum: [MANUAL, TRANSCRIPT_UPLOAD, AUDIO_UPLOAD, VIDEO_UPLOAD, CALENDAR] }
+                meetingStatus:
+                  { type: string, enum: [SCHEDULED, COMPLETED, CANCELLED] }
+                sourceType:
+                  {
+                    type: string,
+                    enum:
+                      [
+                        MANUAL,
+                        TRANSCRIPT_UPLOAD,
+                        AUDIO_UPLOAD,
+                        VIDEO_UPLOAD,
+                        CALENDAR,
+                      ],
+                  }
                 participants:
                   type: array
                   items:
@@ -392,8 +404,33 @@ paths:
           description: Meeting details with participants, transcript metadata, summary, segments, and action items.
     patch:
       summary: Update Meeting Metadata
+      description: Updates Neon metadata atomically. Omitted participants are retained; an explicit array replaces participants, including an empty array to remove all. Names are trimmed and must be unique case-insensitively.
       security:
         - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, minLength: 1, maxLength: 255 }
+                description: { type: [string, 'null'], maxLength: 2000 }
+                startAt: { type: string, format: date-time }
+                endAt: { type: [string, 'null'], format: date-time }
+                timezone: { type: string }
+                meetingStatus:
+                  { type: string, enum: [SCHEDULED, COMPLETED, CANCELLED] }
+                participants:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string, minLength: 1, maxLength: 100 }
+                      email: { type: [string, 'null'], format: email }
+                      role: { type: [string, 'null'] }
       parameters:
         - in: path
           name: id
@@ -534,6 +571,168 @@ paths:
       responses:
         '200':
           description: Action item deleted.
+
+  /ask:
+    post:
+      summary: Ask about real workspace meeting content
+      description: Retrieves bounded workspace sources and calls the environment-configured OpenAI model. Citations reference stored summaries, segments or action items. Maximum 20 questions per user per minute.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, minLength: 1, maxLength: 2000 }
+                meetingId: { type: string, format: uuid }
+                history:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role: { type: string, enum: [user, assistant] }
+                      content: { type: string, maxLength: 5000 }
+      responses:
+        '200':
+          {
+            description: Success envelope containing answer,
+            citations and retrieval scope; no-content answers are explicit.,
+          }
+        '404':
+          {
+            description: Requested meeting is outside the current workspace or does not exist.,
+          }
+        '429': { description: Question rate limit exceeded. }
+        '502':
+          {
+            description: Invalid provider response; no fabricated answer is substituted.,
+          }
+
+  /meetings/media:
+    post:
+      summary: Upload private audio or video and enqueue transcription
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, metadata]
+              properties:
+                file:
+                  {
+                    type: string,
+                    format: binary,
+                    description: Supported audio/video file up to 512 MiB.,
+                  }
+                metadata:
+                  {
+                    type: string,
+                    description: JSON-encoded Create Meeting metadata (title/startAt and optional participants/timezone/description).,
+                  }
+      responses:
+        '201':
+          {
+            description: Saved meeting with queue outcome. Failed Redis dispatch persists FAILED for retry.,
+          }
+        '400': { description: Invalid file type or metadata. }
+        '413': { description: Upload exceeds the maximum size. }
+        '429':
+          { description: Upload limit of five per user per minute exceeded. }
+
+  /meetings/{id}/media:
+    get:
+      summary: Stream a workspace meeting's private recording
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          {
+            description: Private media bytes; disk storage keys are never exposed.,
+          }
+        '206': { description: Requested media byte range. }
+        '404': { description: Recording or workspace meeting not found. }
+
+  /integrations/calendar:
+    get:
+      summary: Get current user's Google Calendar connection status
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          {
+            description: configured,
+            connected,
+            lastSyncedAt,
+            syncing and safe error; no OAuth tokens.,
+          }
+
+  /integrations/calendar/authorize:
+    post:
+      summary: Start Google Calendar read-only OAuth consent
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          {
+            description: Consent URL; also sets a signed ten-minute HttpOnly state/PKCE cookie. Requires configured Google credentials and encryption key.,
+          }
+
+  /integrations/calendar/callback:
+    get:
+      summary: Complete Google OAuth using signed state cookie and PKCE
+      description: Does not require the access-token cookie. Verifies state, signed cookie expiry/audience, and current workspace membership before storing encrypted tokens.
+      security: []
+      parameters:
+        - { in: query, name: code, schema: { type: string } }
+        - { in: query, name: state, schema: { type: string } }
+        - { in: query, name: error, schema: { type: string } }
+      responses:
+        '302':
+          {
+            description: Redirect to configured frontend Settings with connected,
+            denied or error result.,
+          }
+
+  /integrations/calendar/sync:
+    post:
+      summary: Import primary Google Calendar events into Neon
+      description: Initial window is one year before/after today; subsequent syncs use an incremental cursor. Expired cursors trigger a full refresh. Cancellations retain meeting notes. Concurrent sync is guarded by a lease.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200': { description: Sync outcome or already-running status. }
+        '404': { description: Connect Google Calendar first. }
+
+  /integrations/calendar/disconnect:
+    post:
+      summary: Revoke Google authorization and remove stored connection
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          { description: Disconnected; imported meeting content is preserved. }
+        '404': { description: No connection exists. }
 
 components:
   securitySchemes:

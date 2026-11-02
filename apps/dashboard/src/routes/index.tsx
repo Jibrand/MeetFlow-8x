@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { PageSkeleton } from '../components/page-skeleton';
+import { useMeetingsQuery } from '../features/meetings/use-meetings';
 import { createRoute } from '@tanstack/react-router';
 import { rootRoute } from './root';
 import { MeetingList } from '../features/meetings/meeting-list';
 import { AddMeetingDialog } from '../features/meetings/add-meeting-dialog';
-import { apiFetchMeetings } from '../features/meetings/meetings-api';
 import { EmptyState, Button } from '@meetflow/ui';
 import { Video, RefreshCw, AlertCircle } from 'lucide-react';
 
@@ -14,19 +14,7 @@ export const indexRoute = createRoute({
 });
 
 export function MeetingsPage() {
-  const query = useQuery({
-    gcTime: 0,
-    staleTime: 0,
-    queryKey: ['meetings', 'list'],
-    queryFn: () => apiFetchMeetings(),
-    retry: false,
-    refetchInterval: (query) =>
-      query.state.data?.meetings.some(
-        (meeting) => meeting.status === 'processing',
-      )
-        ? 2500
-        : false,
-  });
+  const query = useMeetingsQuery();
   const meetings = query.data?.meetings ?? [];
   const loading = query.isPending;
   const error = query.error?.message;
@@ -53,7 +41,7 @@ export function MeetingsPage() {
             variant="outline"
             size="sm"
             onClick={loadMeetings}
-            disabled={loading}
+            disabled={query.isFetching}
             className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             <RefreshCw
@@ -61,21 +49,26 @@ export function MeetingsPage() {
             />
             <span>Refresh</span>
           </Button>
-          <AddMeetingDialog onMeetingCreated={loadMeetings} />
+          <AddMeetingDialog />
         </div>
       </div>
 
+      {error && query.data && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-xs"
+        >
+          <span>Could not refresh meetings. {error}</span>
+          <Button variant="outline" size="sm" onClick={loadMeetings}>
+            Try Again
+          </Button>
+        </div>
+      )}
+
       {/* Loading Skeleton */}
       {loading && meetings.length === 0 ? (
-        <div role="status" aria-label="Loading meetings" className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-24 w-full animate-pulse rounded-lg border border-border/60 bg-muted/30"
-            />
-          ))}
-        </div>
-      ) : error ? (
+        <PageSkeleton kind="meetings" />
+      ) : error && !query.data ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
           <AlertCircle className="h-6 w-6 text-destructive mx-auto mb-2" />
           <h3 className="text-sm font-semibold text-foreground">

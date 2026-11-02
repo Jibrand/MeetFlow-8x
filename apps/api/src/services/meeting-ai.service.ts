@@ -25,7 +25,7 @@ export const ExtractedHighlightSchema = z.object({
 export type ExtractedHighlight = z.infer<typeof ExtractedHighlightSchema>;
 
 export const MeetingIntelligenceResultSchema = z.object({
-  overview: z.string().min(1),
+  overview: z.string().min(1).max(4000),
   keyPoints: z.array(z.string()).default([]),
   decisions: z.array(z.string()).default([]),
   topics: z.array(z.string()).default([]),
@@ -45,7 +45,10 @@ export class MeetingAIService {
   }
 
   public async analyzeMeeting(params: {
-    meetingTitle: string; meetingDate: Date; timezone?: string; segments: ParsedSegment[];
+    meetingTitle: string;
+    meetingDate: Date;
+    timezone?: string;
+    segments: ParsedSegment[];
     onProgress?: (completed: number, total: number) => Promise<void>;
   }): Promise<MeetingIntelligenceResult> {
     const chunks: ParsedSegment[][] = [[]];
@@ -54,9 +57,17 @@ export class MeetingAIService {
       // Split oversized turns too: no character is silently dropped.
       for (let offset = 0; offset < segment.text.length; offset += 12_000) {
         const text = segment.text.slice(offset, offset + 12_000);
-        if (size + text.length > 24_000 && chunks[chunks.length - 1].length) { chunks.push([]); size = 0; }
+        const formattedLength =
+          text.length + (segment.speakerName?.length ?? 0) + 40;
+        if (
+          size + formattedLength > 24_000 &&
+          chunks[chunks.length - 1].length
+        ) {
+          chunks.push([]);
+          size = 0;
+        }
         chunks[chunks.length - 1].push({ ...segment, text });
-        size += text.length;
+        size += formattedLength;
       }
     }
     const results: MeetingIntelligenceResult[] = [];
@@ -69,20 +80,51 @@ export class MeetingAIService {
     while (overviews.length > 1) {
       const reduced: string[] = [];
       for (let i = 0; i < overviews.length; i += 8) {
-        const summary = await this.analyzeChunk({ ...params, segments: overviews.slice(i, i + 8).map((text, sequence) => ({ sequence, text, speakerName: null, startMs: null, endMs: null })) });
+        const summary = await this.analyzeChunk({
+          ...params,
+          segments: overviews
+            .slice(i, i + 8)
+            .map((text, sequence) => ({
+              sequence,
+              text,
+              speakerName: null,
+              startMs: null,
+              endMs: null,
+            })),
+        });
         reduced.push(summary.overview);
         await params.onProgress?.(chunks.length, chunks.length + 1);
       }
       overviews = reduced;
     }
-    const unique = <T>(items: T[], key: (item: T) => string): T[] => [...new Map(items.map((item) => [key(item).toLowerCase().trim(), item])).values()];
+    const unique = <T>(items: T[], key: (item: T) => string): T[] => [
+      ...new Map(
+        items.map((item) => [key(item).toLowerCase().trim(), item]),
+      ).values(),
+    ];
     return {
-      overview: overviews[0], model: results[0].model,
-      keyPoints: unique(results.flatMap((r) => r.keyPoints), (value) => value),
-      decisions: unique(results.flatMap((r) => r.decisions), (value) => value),
-      topics: unique(results.flatMap((r) => r.topics), (value) => value),
-      highlights: unique(results.flatMap((r) => r.highlights), (value) => value.quote),
-      actionItems: unique(results.flatMap((r) => r.actionItems), (value) => `${value.title}:${value.assigneeName ?? ''}`),
+      overview: overviews[0],
+      model: results[0].model,
+      keyPoints: unique(
+        results.flatMap((r) => r.keyPoints),
+        (value) => value,
+      ),
+      decisions: unique(
+        results.flatMap((r) => r.decisions),
+        (value) => value,
+      ),
+      topics: unique(
+        results.flatMap((r) => r.topics),
+        (value) => value,
+      ),
+      highlights: unique(
+        results.flatMap((r) => r.highlights),
+        (value) => value.quote,
+      ),
+      actionItems: unique(
+        results.flatMap((r) => r.actionItems),
+        (value) => `${value.title}:${value.assigneeName ?? ''}`,
+      ),
     };
   }
 

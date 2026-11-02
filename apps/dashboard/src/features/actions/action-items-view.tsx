@@ -1,14 +1,8 @@
+import { PageSkeleton } from '../../components/page-skeleton';
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
-import {
-  ActionItemRow,
-  Input,
-  Button,
-  Badge,
-  EmptyState,
-  toast,
-} from '@meetflow/ui';
+import { useToggleActionItem } from './use-toggle-action-item';
+import { ActionItemRow, Input, Button, Badge, EmptyState } from '@meetflow/ui';
 import {
   Search,
   CheckCircle2,
@@ -20,12 +14,11 @@ import {
 
 import { isOverdue, useActionItemsQuery } from './use-action-items';
 import { Pagination } from '../../components/ui/pagination';
-import { apiUpdateActionItem } from '../meetings/meetings-api';
 
 const PAGE_SIZE = 8;
 
 export function ActionItemsView() {
-  const queryClient = useQueryClient();
+  const taskToggle = useToggleActionItem();
   const query = useActionItemsQuery();
   const actionItems = query.data ?? [];
   const loading = query.isPending;
@@ -41,19 +34,7 @@ export function ActionItemsView() {
     setCurrentPage(1);
   }, [filter, search]);
 
-  const handleToggle = async (id: string, completed: boolean) => {
-    try {
-      await apiUpdateActionItem(id, { status: completed ? 'DONE' : 'TODO' });
-      await queryClient.invalidateQueries({ queryKey: ['action-items'] });
-      await queryClient.invalidateQueries({ queryKey: ['overview'] });
-      await queryClient.invalidateQueries({ queryKey: ['meeting'] });
-      toast.success(completed ? 'Task marked completed' : 'Task reopened');
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Unable to save task.',
-      );
-    }
-  };
+  const handleToggle = taskToggle.toggle;
 
   const overdueCount = React.useMemo(
     () => actionItems.filter((i) => isOverdue(i, now)).length,
@@ -96,7 +77,7 @@ export function ActionItemsView() {
               Action Items
             </h1>
             <Badge variant="secondary" className="text-xs">
-              {openCount} Open
+              {loading ? 'Loading…' : `${openCount} Open`}
             </Badge>
             {overdueCount > 0 && (
               <Badge variant="destructive" className="text-xs gap-1">
@@ -167,21 +148,28 @@ export function ActionItemsView() {
         />
       </div>
 
+      {query.isError && query.data && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-xs"
+        >
+          <span>Could not refresh data. {query.error.message}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
+
       {/* Task List Workspace inside Bounded Surface */}
       {loading ? (
-        <div
-          role="status"
-          aria-label="Loading action items"
-          className="space-y-3"
-        >
-          {[1, 2, 3].map((n) => (
-            <div
-              key={n}
-              className="h-20 animate-pulse rounded-lg border bg-muted/30"
-            />
-          ))}
-        </div>
-      ) : query.isError ? (
+        <PageSkeleton kind="actions" />
+      ) : query.isError && !query.data ? (
         <div role="alert" className="p-6 space-y-3">
           <p>{query.error.message}</p>
           <Button
@@ -205,6 +193,7 @@ export function ActionItemsView() {
                   id={item.id}
                   title={item.title}
                   completed={item.completed}
+                  pending={taskToggle.pendingIds.has(item.id)}
                   onToggleCompleted={(val) => handleToggle(item.id, val)}
                   assigneeName={item.assigneeName}
                   dueDate={item.dueDate}

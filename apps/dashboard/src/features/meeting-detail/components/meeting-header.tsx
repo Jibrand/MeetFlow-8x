@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
 } from '@meetflow/ui';
 import { ParticipantOverflow } from './participant-overflow';
+import { MeetingActions } from '../../meetings/meeting-actions';
 import {
   ArrowLeft,
   Share2,
@@ -75,6 +76,7 @@ export function MeetingHeader({
 
         {/* Header Actions */}
         <div className="flex items-center gap-2">
+          <MeetingActions meeting={meeting} />
           <Button
             variant="outline"
             size="sm"
@@ -122,11 +124,17 @@ export function MeetingHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={handleDownloadMarkdown} className="text-xs gap-2">
+              <DropdownMenuItem
+                onClick={handleDownloadMarkdown}
+                className="text-xs gap-2"
+              >
                 <FileText className="h-3.5 w-3.5 text-primary" />
                 <span>Download Markdown (.md)</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDownloadTranscript} className="text-xs gap-2">
+              <DropdownMenuItem
+                onClick={handleDownloadTranscript}
+                className="text-xs gap-2"
+              >
                 <FileCode className="h-3.5 w-3.5 text-muted-foreground" />
                 <span>Download Transcript (.txt)</span>
               </DropdownMenuItem>
@@ -149,7 +157,10 @@ export function MeetingHeader({
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <MeetingStatusBadge status={meeting.status} />
-          <Badge variant="secondary" className="text-[10px] uppercase font-semibold">
+          <Badge
+            variant="secondary"
+            className="text-[10px] uppercase font-semibold"
+          >
             {platformLabel}
           </Badge>
           {meeting.tags.map((tag) => (
@@ -176,7 +187,11 @@ export function MeetingHeader({
       {/* Participants Row with Overflow Popover */}
       <div className="flex items-center gap-2 pt-0.5">
         <span className="text-xs text-muted-foreground">Participants:</span>
-        <ParticipantOverflow participants={meeting.participants} maxVisible={4} size="sm" />
+        <ParticipantOverflow
+          participants={meeting.participants}
+          maxVisible={4}
+          size="sm"
+        />
       </div>
     </div>
   );

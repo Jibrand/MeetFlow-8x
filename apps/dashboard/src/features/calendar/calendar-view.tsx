@@ -1,6 +1,7 @@
+import { PageSkeleton } from '../../components/page-skeleton';
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMeetingsQuery } from '../meetings/use-meetings';
 import { MeetingStatusBadge, Button, Badge } from '@meetflow/ui';
 import {
   Calendar as CalendarIcon,
@@ -16,7 +17,6 @@ import {
   groupMeetingsByDate,
   PLATFORM_LABEL,
 } from '../../lib/meeting-format';
-import { apiFetchMeetings } from '../meetings/meetings-api';
 import { MeetingItem } from '../../types/meeting';
 import { AddMeetingDialog } from '../meetings/add-meeting-dialog';
 
@@ -30,13 +30,7 @@ export function CalendarView() {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   });
-  const query = useQuery({
-    gcTime: 0,
-    staleTime: 0,
-    queryKey: ['meetings', 'calendar'],
-    queryFn: () => apiFetchMeetings(),
-    retry: false,
-  });
+  const query = useMeetingsQuery();
   const meetings = query.data?.meetings ?? [];
   const loading = query.isPending;
   const loadBackendMeetings = () => {
@@ -112,7 +106,7 @@ export function CalendarView() {
               Calendar & Schedule
             </h1>
             <Badge variant="secondary" className="text-xs">
-              {sortedMeetings.length} Meetings
+              {loading ? 'Loading…' : `${sortedMeetings.length} Meetings`}
             </Badge>
             {loading && (
               <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground ml-1" />
@@ -153,16 +147,31 @@ export function CalendarView() {
             </button>
           </div>
 
-          <AddMeetingDialog onMeetingCreated={loadBackendMeetings} />
+          <AddMeetingDialog />
         </div>
       </div>
 
-      {loading ? (
-        <div role="status" aria-label="Loading calendar" className="space-y-3">
-          <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/30" />
-          <div className="h-24 animate-pulse rounded-lg bg-muted/30" />
+      {query.isError && query.data && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-xs"
+        >
+          <span>Could not refresh data. {query.error.message}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            Try Again
+          </Button>
         </div>
-      ) : query.isError ? (
+      )}
+
+      {loading ? (
+        <PageSkeleton kind="calendar" />
+      ) : query.isError && !query.data ? (
         <div
           role="alert"
           className="rounded-lg border border-destructive/30 p-6 text-center space-y-3"

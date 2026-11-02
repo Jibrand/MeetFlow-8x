@@ -1,4 +1,8 @@
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToggleActionItem } from '../../actions/use-toggle-action-item';
+import { meetingKey, invalidateMeetingData } from '../../meetings/use-meetings';
+import type { apiFetchMeeting } from '../../meetings/meetings-api';
 import {
   MeetingItem,
   SummaryTemplateId,
@@ -58,6 +62,8 @@ export function MeetingDetailView({
   sourceFormat,
   onReload,
 }: MeetingDetailViewProps) {
+  const client = useQueryClient();
+  const taskToggle = useToggleActionItem();
   // 1. Templates
   const allTemplates = React.useMemo(
     () => getMeetingSummaryTemplates(meeting),
@@ -94,8 +100,11 @@ export function MeetingDetailView({
   React.useEffect(() => {
     if (sharedTimestampApplied.current || player.duration <= 0) return;
     sharedTimestampApplied.current = true;
-    const timestamp = Number(new URLSearchParams(window.location.search).get('t'));
-    if (Number.isFinite(timestamp) && timestamp > 0) player.seek(Math.min(timestamp, player.duration));
+    const timestamp = Number(
+      new URLSearchParams(window.location.search).get('t'),
+    );
+    if (Number.isFinite(timestamp) && timestamp > 0)
+      player.seek(Math.min(timestamp, player.duration));
   }, [player.duration, player.seek]);
 
   React.useEffect(() => {
@@ -115,13 +124,25 @@ export function MeetingDetailView({
   };
 
   // 4. Action Items Store Subscription & Database Sync
-  const [actionItems, setActionItems] = React.useState<ActionItemData[]>(
-    meeting.actionItems ?? [],
-  );
-
-  React.useEffect(() => {
-    setActionItems(meeting.actionItems ?? []);
-  }, [meeting.id, meeting.actionItems]);
+  const actionItems = meeting.actionItems ?? [];
+  const setActionItems = (
+    update: (items: ActionItemData[]) => ActionItemData[],
+  ) => {
+    client.setQueryData<Awaited<ReturnType<typeof apiFetchMeeting>>>(
+      meetingKey(meeting.id),
+      (detail) =>
+        detail
+          ? {
+              ...detail,
+              meeting: {
+                ...detail.meeting,
+                actionItems: update(detail.meeting.actionItems ?? []),
+              },
+            }
+          : detail,
+    );
+    void invalidateMeetingData(client);
+  };
 
   // 5. Highlights Store Subscription
   const [highlights, setHighlights] = React.useState<HighlightData[]>(() =>
@@ -205,22 +226,7 @@ export function MeetingDetailView({
     });
   };
 
-  const handleToggleActionItem = async (id: string, completed: boolean) => {
-    try {
-      const updated = await apiUpdateActionItem(id, {
-        status: completed ? 'DONE' : 'TODO',
-      });
-      setActionItems((prev) =>
-        prev.map((item) => (item.id === id ? updated : item)),
-      );
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Unable to update action item.',
-      );
-    }
-  };
+  const handleToggleActionItem = taskToggle.toggle;
 
   const handleDeleteActionItem = async (id: string) => {
     try {
@@ -366,6 +372,7 @@ export function MeetingDetailView({
           {/* Action Items Panel */}
           <ActionItemsPanel
             items={actionItems}
+            pendingIds={taskToggle.pendingIds}
             onSeek={handleSeek}
             onToggleComplete={handleToggleActionItem}
             onEdit={(item) => {

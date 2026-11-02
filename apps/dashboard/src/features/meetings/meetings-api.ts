@@ -176,6 +176,9 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
   }));
 
   const hasRecording = Boolean(m.recordingUrl);
+  const recordingUrl = m.recordingUrl?.startsWith('/')
+    ? `${API_BASE_URL.replace(/\/api(?:\/v1)?\/?$/, '')}${m.recordingUrl}`
+    : m.recordingUrl || undefined;
   const hasTranscript =
     Boolean(m.hasTranscript) ||
     Boolean(m.transcripts && m.transcripts.length > 0) ||
@@ -188,7 +191,11 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     startDate: m.startAt,
     durationSeconds: m.durationSeconds ?? 0,
     status,
-    platform: ['TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD'].includes(m.sourceType) ? 'upload' : 'meet',
+    platform: ['TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD'].includes(
+      m.sourceType,
+    )
+      ? 'upload'
+      : 'meet',
     organizer: {
       id: m.participants?.[0]?.id || '',
       name: m.participants?.[0]?.name || 'Organizer unavailable',
@@ -207,7 +214,8 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     highlightCount: highlights.length,
     hasRecording,
     hasTranscript,
-    recordingUrl: m.recordingUrl?.startsWith('/') ? `${API_BASE_URL.replace(/\/api(?:\/v1)?\/?$/, '')}${m.recordingUrl}` : m.recordingUrl || undefined,
+    recordingUrl,
+    videoUrl: m.sourceType === 'VIDEO_UPLOAD' ? recordingUrl : undefined,
     summary: m.summary
       ? {
           executiveSummary: m.summary.overview,
@@ -242,13 +250,16 @@ export function mapBackendActionItem(a: BackendActionItem): ActionItemData {
 // API Client Functions
 // ==============================================================================
 
-export async function apiFetchMeetings(params?: {
-  status?: string;
-  processingStatus?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-}): Promise<{ meetings: MeetingItem[]; total: number }> {
+export async function apiFetchMeetings(
+  params?: {
+    status?: string;
+    processingStatus?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{ meetings: MeetingItem[]; total: number }> {
   const query = new URLSearchParams();
   if (params?.status) query.set('status', params.status);
   if (params?.processingStatus)
@@ -266,7 +277,7 @@ export async function apiFetchMeetings(params?: {
     const res = await apiClient<{
       meetings: BackendMeeting[];
       pagination: { total: number; totalPages: number };
-    }>(`/meetings?${query.toString()}`);
+    }>(`/meetings?${query.toString()}`, { signal });
     meetings.push(...res.meetings.map(mapBackendMeetingToItem));
     total = res.pagination.total;
     if (
@@ -282,8 +293,9 @@ export async function apiFetchMeetings(params?: {
 
 export async function apiFetchMeeting(
   id: string,
+  signal?: AbortSignal,
 ): Promise<{ meeting: MeetingItem; raw: BackendMeeting }> {
-  const res = await apiClient<BackendMeeting>(`/meetings/${id}`);
+  const res = await apiClient<BackendMeeting>(`/meetings/${id}`, { signal });
   return {
     meeting: mapBackendMeetingToItem(res),
     raw: res,
@@ -318,11 +330,18 @@ export async function apiFetchProcessingStatus(
   return apiClient<ProcessingStatusResponse>(`/meetings/${id}/processing`);
 }
 
-export async function apiCreateMediaMeeting(file: File, metadata: Parameters<typeof apiCreateMeeting>[0]): Promise<MeetingItem> {
+export async function apiCreateMediaMeeting(
+  file: File,
+  metadata: Parameters<typeof apiCreateMeeting>[0],
+): Promise<MeetingItem> {
   const body = new FormData();
   body.append('file', file);
   body.append('metadata', JSON.stringify(metadata));
-  const result = await apiClient<BackendMeeting>('/meetings/media', { method: 'POST', body, timeoutMs: 120_000 });
+  const result = await apiClient<BackendMeeting>('/meetings/media', {
+    method: 'POST',
+    body,
+    timeoutMs: 120_000,
+  });
   return mapBackendMeetingToItem(result);
 }
 
@@ -341,21 +360,38 @@ export async function apiReprocessMeeting(id: string): Promise<void> {
   }
 }
 
-export async function apiUpdateMeeting(id: string, data: {
-  title?: string; description?: string | null; startAt?: string; endAt?: string | null; timezone?: string;
-  participants?: Array<{ name: string; email?: string | null; role?: string | null }>;
-}): Promise<BackendMeeting> {
-  return apiClient(`/meetings/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export async function apiUpdateMeeting(
+  id: string,
+  data: {
+    title?: string;
+    description?: string | null;
+    startAt?: string;
+    endAt?: string | null;
+    timezone?: string;
+    participants?: Array<{
+      name: string;
+      email?: string | null;
+      role?: string | null;
+    }>;
+  },
+): Promise<BackendMeeting> {
+  return apiClient(`/meetings/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }
 export async function apiDeleteMeeting(id: string): Promise<void> {
   await apiClient(`/meetings/${id}`, { method: 'DELETE' });
 }
 
-export async function apiFetchActionItems(params?: {
-  meetingId?: string;
-  status?: 'TODO' | 'IN_PROGRESS' | 'DONE';
-  search?: string;
-}): Promise<ActionItemData[]> {
+export async function apiFetchActionItems(
+  params?: {
+    meetingId?: string;
+    status?: 'TODO' | 'IN_PROGRESS' | 'DONE';
+    search?: string;
+  },
+  signal?: AbortSignal,
+): Promise<ActionItemData[]> {
   const query = new URLSearchParams();
   if (params?.meetingId) query.set('meetingId', params.meetingId);
   if (params?.status) query.set('status', params.status);
@@ -369,7 +405,7 @@ export async function apiFetchActionItems(params?: {
     const res = await apiClient<{
       actionItems: BackendActionItem[];
       pagination: { totalPages: number };
-    }>(`/action-items?${query.toString()}`);
+    }>(`/action-items?${query.toString()}`, { signal });
     items.push(...res.actionItems.map(mapBackendActionItem));
     if (page >= res.pagination.totalPages || res.actionItems.length === 0)
       break;
@@ -417,6 +453,8 @@ export async function apiDeleteActionItem(id: string): Promise<void> {
   });
 }
 
-export async function apiFetchOverviewStats(): Promise<OverviewStatsResponse> {
-  return apiClient<OverviewStatsResponse>('/meetings/overview');
+export async function apiFetchOverviewStats(
+  signal?: AbortSignal,
+): Promise<OverviewStatsResponse> {
+  return apiClient<OverviewStatsResponse>('/meetings/overview', { signal });
 }

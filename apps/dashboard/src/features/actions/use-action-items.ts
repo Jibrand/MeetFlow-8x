@@ -1,15 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { ActionItemData } from '../../types/meeting';
 import { apiFetchActionItems } from '../meetings/meetings-api';
+import { workspaceScope } from '../meetings/use-meetings';
 
 export function useActionItemsQuery(meetingId?: string) {
   return useQuery({
-    queryKey: ['action-items', meetingId ?? 'all'],
-    queryFn: () => apiFetchActionItems(meetingId ? { meetingId } : undefined),
+    queryKey: ['action-items', workspaceScope(), meetingId ?? 'all'],
+    queryFn: ({ signal }) =>
+      apiFetchActionItems(meetingId ? { meetingId } : undefined, signal),
     retry: false,
-    gcTime: 0,
-    staleTime: 0,
-    refetchInterval: 5000,
+    gcTime: 300_000,
+    staleTime: 30_000,
   });
 }
 

@@ -30,7 +30,8 @@ export class ApiError extends Error {
 
 // Configurable API root URL: defaults to local backend /api/v1
 export const API_BASE_URL =
-  ((import.meta as any).env?.VITE_API_URL as string) || 'http://localhost:4000/api/v1';
+  ((import.meta as any).env?.VITE_API_URL as string) ||
+  'http://localhost:4000/api/v1';
 
 // Client-side session existence indicator (non-sensitive boolean flag only; NEVER store tokens/JWTs here)
 const SESSION_ACTIVE_KEY = 'meetflow:session_active';
@@ -121,19 +122,27 @@ export async function performTokenRefresh(): Promise<boolean> {
 
 export async function apiClient<T>(
   endpoint: string,
-  options: RequestInit & { _isRetry?: boolean; timeoutMs?: number } = {}
+  options: RequestInit & { _isRetry?: boolean; timeoutMs?: number } = {},
 ): Promise<T> {
   const url = endpoint.startsWith('http')
     ? endpoint
     : `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const defaultHeaders: Record<string, string> = {
-    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(options.body instanceof FormData
+      ? {}
+      : { 'Content-Type': 'application/json' }),
     Accept: 'application/json',
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 10000);
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? 10000,
+  );
+  const externalAbort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener('abort', externalAbort, { once: true });
 
   const config: RequestInit = {
     ...options,
@@ -142,7 +151,7 @@ export async function apiClient<T>(
       ...defaultHeaders,
       ...options.headers,
     },
-    signal: options.signal || controller.signal,
+    signal: controller.signal,
   };
 
   try {
@@ -173,7 +182,8 @@ export async function apiClient<T>(
       const json = await response.json().catch(() => null);
       const errPayload: ApiErrorPayload = json?.error || {
         code: 'UNAUTHORIZED',
-        message: json?.message || response.statusText || 'Authentication required',
+        message:
+          json?.message || response.statusText || 'Authentication required',
       };
       throw new ApiError(401, errPayload);
     }
@@ -194,17 +204,23 @@ export async function apiClient<T>(
       throw error;
     }
     if (error.name === 'AbortError') {
+      if (options.signal?.aborted) throw error;
       throw new ApiError(0, {
         code: 'TIMEOUT',
-        message: 'Request to MeetFlow API timed out. Please check your backend connection.',
+        message:
+          'Request to MeetFlow API timed out. Please check your backend connection.',
       });
     }
     // Network / connection error (e.g. ERR_CONNECTION_REFUSED, fetch failed)
     throw new ApiError(0, {
       code: 'API_UNAVAILABLE',
-      message: 'Unable to connect to MeetFlow API server at ' + API_BASE_URL + '. Backend is offline.',
+      message:
+        'Unable to connect to MeetFlow API server at ' +
+        API_BASE_URL +
+        '. Backend is offline.',
     });
   } finally {
     clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', externalAbort);
   }
 }

@@ -1,25 +1,13 @@
 import { Link } from '@tanstack/react-router';
 import { MeetingItem } from '../../types/meeting';
+import { MeetingStatusBadge } from '@meetflow/ui';
+import { MeetingActions } from './meeting-actions';
+import { Video, CheckSquare, Bookmark, Play, AudioLines } from 'lucide-react';
 import {
-  MeetingStatusBadge,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  Button,
-  toast,
-} from '@meetflow/ui';
-import {
-  Video,
-  MoreHorizontal,
-  CheckSquare,
-  Bookmark,
-  Share2,
-  Play,
-  AudioLines,
-} from 'lucide-react';
-import { formatDuration, formatMeetingDate, PLATFORM_LABEL } from '../../lib/meeting-format';
+  formatDuration,
+  formatMeetingDate,
+  PLATFORM_LABEL,
+} from '../../lib/meeting-format';
 import { ParticipantOverflow } from '../meeting-detail/components/participant-overflow';
 
 export interface MeetingCardProps {
@@ -92,41 +80,7 @@ export function MeetingCard({ meeting }: MeetingCardProps) {
           <div className="flex items-center justify-between gap-2">
             <MeetingStatusBadge status={meeting.status} />
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  aria-label="Meeting actions"
-                >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem
-                  onClick={() => {
-                    navigator.clipboard?.writeText(
-                      `${window.location.origin}/meetings/${meeting.id}`
-                    );
-                    toast.success('Meeting link copied to clipboard');
-                  }}
-                >
-                  <Share2 className="mr-2 h-3.5 w-3.5" />
-                  <span>Copy Link</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast.info('Exporting meeting summary...')}>
-                  Export Summary
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => toast.error('Delete simulated in seed mode')}
-                >
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <MeetingActions meeting={meeting} />
           </div>
 
           {/* Title */}
@@ -152,18 +106,32 @@ export function MeetingCard({ meeting }: MeetingCardProps) {
 
           <div className="flex items-center gap-2">
             {meeting.actionItemCount > 0 && (
-              <span className="flex items-center gap-0.5" title={`${meeting.actionItemCount} action items`}>
+              <span
+                className="flex items-center gap-0.5"
+                title={`${meeting.actionItemCount} action items`}
+              >
                 <CheckSquare className="h-3 w-3 text-primary" />
-                <span className="font-mono text-[10px]">{meeting.actionItemCount}</span>
+                <span className="font-mono text-[10px]">
+                  {meeting.actionItemCount}
+                </span>
               </span>
             )}
             {meeting.highlightCount > 0 && (
-              <span className="flex items-center gap-0.5" title={`${meeting.highlightCount} highlights`}>
+              <span
+                className="flex items-center gap-0.5"
+                title={`${meeting.highlightCount} highlights`}
+              >
                 <Bookmark className="h-3 w-3 text-primary" />
-                <span className="font-mono text-[10px]">{meeting.highlightCount}</span>
+                <span className="font-mono text-[10px]">
+                  {meeting.highlightCount}
+                </span>
               </span>
             )}
-            <ParticipantOverflow participants={meeting.participants} maxVisible={3} size="xs" />
+            <ParticipantOverflow
+              participants={meeting.participants}
+              maxVisible={3}
+              size="xs"
+            />
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@
     --secondary: 210 20% 96%;           /* Subtle nested surfaces: #F3F4F6 */
     --secondary-foreground: 240 10% 10%;
     --muted: 210 20% 96%;               /* Subtle nested surfaces: #F3F4F6 */
+    --skeleton: 220 12% 88%;            /* Visible loading surfaces without changing card colors */
     --muted-foreground: 240 5% 46%;     /* Secondary text: #71717A */
     --accent: 60 5% 96%;                /* Hover: #F5F5F4 */
     --accent-foreground: 240 10% 10%;
@@ -56,6 +57,7 @@
     --secondary: 240 6% 14%;            /* Nested surfaces: #222226 */
     --secondary-foreground: 0 0% 98%;
     --muted: 240 6% 14%;                /* Nested surfaces: #222226 */
+    --skeleton: 240 5% 23%;
     --muted-foreground: 240 5% 65%;     /* Secondary text: #A1A1AA */
     --accent: 240 4% 16%;               /* Hover: #27272A */
     --accent-foreground: 0 0% 98%;
