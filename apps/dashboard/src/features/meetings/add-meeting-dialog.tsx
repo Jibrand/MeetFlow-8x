@@ -15,8 +15,6 @@ import {
   DialogDescription,
   DialogFooter,
   Tabs,
-  TabsList,
-  TabsTrigger,
   TabsContent,
   Button,
   Input,
@@ -25,7 +23,6 @@ import {
 import {
   Plus,
   FileText,
-  Video,
   AlertCircle,
   X,
   UploadCloud,

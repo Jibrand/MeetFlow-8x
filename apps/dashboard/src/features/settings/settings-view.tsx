@@ -207,7 +207,7 @@ export function SettingsView() {
         <CardHeader className="p-4 pb-2">
           <div className="flex items-center gap-2">
             <Palette className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Appearance & Theme</CardTitle>
+            <CardTitle className="text-sm">Theme</CardTitle>
           </div>
           <CardDescription className="text-xs">
             Choose your preferred interface theme. Syncs with system preferences by default.
