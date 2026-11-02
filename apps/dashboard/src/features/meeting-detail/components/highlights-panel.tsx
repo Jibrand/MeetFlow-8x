@@ -71,7 +71,7 @@ export function HighlightsPanel({
   }, [highlights, activeTag]);
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-3 rounded-xl border border-amber-200/50 bg-amber-50/30 p-3 shadow-[0_3px_14px_-8px_rgba(234,179,8,0.25)] dark:border-amber-200/10 dark:bg-amber-100/[0.025]">
       {/* Header and Add button */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -138,7 +138,7 @@ export function HighlightsPanel({
           </Button>
         </div>
       ) : filteredHighlights.length > 0 ? (
-        <div className="space-y-2">
+        <div role="region" aria-label="Highlights" tabIndex={0} className="max-h-[min(26rem,55vh)] space-y-2 overflow-y-auto overscroll-contain scroll-smooth pr-1 motion-reduce:scroll-auto">
           {filteredHighlights.map((hl) => (
             <div
               key={hl.id}
@@ -167,7 +167,7 @@ export function HighlightsPanel({
                       ? 'No timestamp'
                       : formatSecondsToTime(hl.startTime)}
                   </span>
-                  <div className="flex items-center opacity-100 sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                  <div className="flex items-center opacity-100 sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 group-focus-within:opacity-100 transition-opacity">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -325,6 +325,6 @@ export function HighlightsPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

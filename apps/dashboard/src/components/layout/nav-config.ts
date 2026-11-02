@@ -26,7 +26,6 @@ export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
   { title: 'Companies & Projects', path: '/projects', icon: LayoutDashboard },
   { title: 'Project Board', path: '/board', icon: LayoutDashboard },
   { title: 'Decision Memory', path: '/decisions', icon: CheckSquare },
-  { title: 'AI Actions', path: '/ai-actions', icon: Sparkles },
   { title: 'Calendar', path: '/calendar', icon: Calendar },
   { title: 'Ask MeetFlow', path: '/ask', icon: Sparkles },
 ];

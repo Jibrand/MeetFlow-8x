@@ -17,7 +17,6 @@ import {
   Share2,
   Copy,
   Download,
-  Scissors,
   Bookmark,
   FileText,
   FileCode,
@@ -40,7 +39,6 @@ export function MeetingHeader({
   meeting,
   currentTemplate,
   onOpenShare,
-  onOpenClip,
   onOpenHighlight,
 }: MeetingHeaderProps) {
   const platformLabel = {
@@ -86,17 +84,6 @@ export function MeetingHeader({
           >
             <Bookmark className="h-3.5 w-3.5 text-primary" />
             <span className="hidden sm:inline">Highlight</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onOpenClip}
-            className="h-8 text-xs gap-1.5"
-            title="Create and preview a shareable clip snippet"
-          >
-            <Scissors className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="hidden sm:inline">Create Clip</span>
           </Button>
 
           <Button

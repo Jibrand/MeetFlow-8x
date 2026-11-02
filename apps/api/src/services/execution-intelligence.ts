@@ -1,3 +1,4 @@
+import { compareDecisions, persistReconciliation, type MemoryDecision } from './decision-reconciliation';
 import { logger } from '../lib/logger';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -72,6 +73,8 @@ function evidence(quote: string, segments: ParsedSegment[], meetingId: string) {
 export async function prepareExecution(
   projectId: string,
   result: MeetingIntelligenceResult,
+  source: { id: string; startAt: Date },
+  segments: ParsedSegment[],
 ) {
   const project = await prisma.project.findUniqueOrThrow({
     where: { id: projectId },
@@ -175,7 +178,23 @@ export async function prepareExecution(
           matches.set(match.index, match.taskId);
     } catch { logger.warn('Ambiguous commitment matching was unavailable; no task was changed.',{projectId}); }
   }
-  return { matches, needsReview: project.needsReview };
+  const existing = await prisma.decision.findMany({
+    where: { projectId }, include: { meeting: { select: { startAt: true } } },
+  });
+  const incoming: MemoryDecision[] = [];
+  const descriptions = new Set(existing.filter((d) => d.meetingId === source.id).map((d) => normalize(d.description)));
+  for (const item of result.decisionRecords) {
+    const proof = evidence(item.quote, segments, source.id);
+    const signature = normalize(item.description);
+    if (!proof.length || descriptions.has(signature)) continue;
+    descriptions.add(signature);
+    const originalStatus = ['CONFIRMED', 'CONDITIONAL'].includes(item.status) && /\b(only (?:after|if|when)|provided that|contingent on|subject to|pending .*sign.off)\b/i.test(item.quote)
+      ? 'CONDITIONAL' : item.status;
+    incoming.push({ id: randomUUID(), meetingId: source.id, title: item.title,
+      description: item.description, originalStatus, evidence: proof, meeting: { startAt: source.startAt } });
+  }
+  const relationships = project.needsReview ? [] : await compareDecisions(existing, incoming);
+  return { matches, needsReview: project.needsReview, existing, incoming, relationships };
 }
 export async function persistExecution(
   tx: Prisma.TransactionClient,
@@ -194,10 +213,16 @@ export async function persistExecution(
       (t) => taskTitle(t.title) + '|' + normalize(t.assigneeName ?? ''),
     ),
   );
+  const matchedTasks = new Set(prepared.matches.values());
   for (const item of result.actionItems) {
     const signature =
       taskTitle(item.title) + '|' + normalize(item.assigneeName ?? '');
-    if (seen.has(signature)) continue;
+    if (seen.has(signature) || tasks.some((t) =>
+      normalize(t.assigneeName ?? '') === normalize(item.assigneeName ?? '') &&
+      similarity(t.title, item.title) >= 0.8 &&
+      (!item.dueDate || t.dueDate?.toISOString().slice(0, 10) === item.dueDate.slice(0, 10)) &&
+      (matchedTasks.has(t.id) || !t.deletedAt),
+    )) continue;
     const proof = evidence(
       item.quote || item.description || item.title,
       segments,
@@ -264,64 +289,22 @@ export async function persistExecution(
       ),
     });
   }
-  const old = prepared.needsReview
-    ? []
-    : await tx.decision.findMany({
-        where: {
-          projectId: meeting.projectId,
-          meetingId: { not: meeting.id },
-          status: { not: 'SUPERSEDED' },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      });
-  const current = await tx.decision.findMany({
-    where: { meetingId: meeting.id },
-  });
-  const decisionRows: Prisma.DecisionCreateManyInput[] = [];
-  for (const item of result.decisionRecords) {
-    const proof = evidence(item.quote, segments, meeting.id);
-    if (
-      !proof.length ||
-      current.some(
-        (d) => normalize(d.description) === normalize(item.description),
-      )
-    )
-      continue;
-    const id = randomUUID();
-    decisionRows.push({
-      id,
-      projectId: meeting.projectId,
-      meetingId: meeting.id,
-      title: item.title,
-      description: item.description,
-      status: item.status,
-      originalStatus: item.status,
-      evidence: proof,
-      fingerprint: key(normalize(item.description)),
-    });
+  // The worker holds the project row lock. Reject stale analysis for a queue retry.
+  const snapshot = await tx.decision.findMany({ where: { projectId: meeting.projectId }, select: { id: true } });
+  const expected = new Set(prepared.existing.map((d) => d.id));
+  if (snapshot.length !== expected.size || snapshot.some((d) => !expected.has(d.id))) {
+    throw new Error('Project decisions changed during analysis; retry meeting processing.');
   }
-  if (decisionRows.length)
-    await tx.decision.createMany({ data: decisionRows, skipDuplicates: true });
-  const conflicts: Prisma.DecisionConflictCreateManyInput[] = [];
-  for (const item of decisionRows)
-    for (const previous of old)
-      if (
-        similarity(item.title, previous.title) >= 0.5 &&
-        item.status !== previous.status
-      )
-        conflicts.push({
-          projectId: meeting.projectId,
-          previousDecisionId: previous.id,
-          newDecisionId: item.id!,
-          explanation:
-            'Related project decisions express a possible status change. Compare the original evidence before confirming.',
-        });
-  if (conflicts.length)
-    await tx.decisionConflict.createMany({
-      data: conflicts,
-      skipDuplicates: true,
-    });
+  if (prepared.incoming.length) {
+    await tx.decision.createMany({ data: prepared.incoming.map((d) => ({
+      id: d.id, projectId: meeting.projectId, meetingId: meeting.id,
+      title: d.title, description: d.description, status: d.originalStatus,
+      originalStatus: d.originalStatus, evidence: d.evidence as Prisma.InputJsonValue,
+      fingerprint: key(normalize(d.description)),
+    })) });
+  }
+  await persistReconciliation(tx, meeting.projectId,
+    [...prepared.existing, ...prepared.incoming], prepared.relationships);
   for (const item of result.actionSuggestions) {
     if (actions.filter((a) => !a.type.startsWith('COMMITMENT_')).length >= 3) break;
     if (actions.some((a) => normalize(a.title) === normalize(item.title))) continue;
@@ -549,4 +532,40 @@ export async function generateArtifact(id: string, generationId: string) {
     where: { id, generationId, status: 'RUNNING' },
     data: { status: 'GENERATED', generatedContent: content, error: null },
   });
+}
+
+// Repair legacy memory without re-extracting transcripts or changing Ask's saved summaries.
+export async function reconcileProjectDecisions(projectId: string) {
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+  if (project.needsReview) throw new Error('Assign legacy meetings to a reviewed project before reconciliation.');
+  const decisions = await prisma.decision.findMany({
+    where: { projectId }, include: { meeting: { select: { startAt: true } } },
+    orderBy: [{ meeting: { startAt: 'asc' } }, { id: 'asc' }],
+  });
+  const relationships = await compareDecisions([], decisions);
+  await processingTransaction(async (tx) => {
+    await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } });
+    const current = await tx.decision.findMany({ where: { projectId }, select: { id: true, updatedAt: true } });
+    const expected = new Map(decisions.map((d) => [d.id, +d.updatedAt]));
+    if (current.length !== decisions.length || current.some((d) => expected.get(d.id) !== +d.updatedAt)) {
+      throw new Error('Decision history changed during reconciliation; retry.');
+    }
+    await persistReconciliation(tx, projectId, decisions, relationships);
+  });
+}
+
+export async function scheduleLegacyReconciliation(projectId: string, workspaceId: string): Promise<'pending' | 'failed' | 'unavailable'> {
+  try {
+    const queue = getMeetingProcessingQueue();
+    const jobId = 'decision-memory-' + projectId;
+    const existing = await withQueueDeadline(() => queue.getJob(jobId));
+    if (existing) {
+      const state = await withQueueDeadline(() => existing.getState());
+      if (state === 'failed') return 'failed';
+      if (state !== 'completed') return 'pending';
+      await withQueueDeadline(() => existing.remove());
+    }
+    await withQueueDeadline(() => queue.add('decision-memory', { decisionProjectId: projectId, workspaceId, meetingId: '' }, { jobId }));
+    return 'pending';
+  } catch { return 'unavailable'; }
 }

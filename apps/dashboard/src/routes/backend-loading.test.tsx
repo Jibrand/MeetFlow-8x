@@ -128,7 +128,7 @@ describe('Backend-only page loading', () => {
       mount(<Component />);
       await waitFor(() =>
         expect(
-          screen.getByText(/No meetings in (this )?workspace/i),
+          screen.getByText(/No meetings (?:in (this )?workspace|scheduled)/i),
         ).toBeDefined(),
       );
       expect(screen.queryByText(/Sarah Connor|Q4 Product Roadmap/i)).toBeNull();
@@ -155,6 +155,22 @@ describe('Backend-only page loading', () => {
       );
     },
   );
+
+  it('retains all calendar dates and month navigation with zero meetings, including agenda selection', async () => {
+    vi.mocked(apiFetchMeetings).mockResolvedValue({ meetings: [], total: 0 });
+    mount(<CalendarView />);
+    await screen.findByText('No meetings scheduled');
+    const now = new Date();
+    const count = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    expect(screen.getAllByRole('button', { name: /Create meeting on/ })).toHaveLength(count);
+    expect(screen.getByText(now.toLocaleString('default', { month: 'long', year: 'numeric' }))).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    expect(screen.getByText(next.toLocaleString('default', { month: 'long', year: 'numeric' }))).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+    expect(screen.getAllByRole('button', { name: /Create meeting on/ }).length).toBeGreaterThan(27);
+    expect(screen.queryByText(/Only Neon meeting/)).toBeNull();
+  });
 
   it('clears the old meeting on route change while the next meeting loads', async () => {
     vi.mocked(apiFetchMeeting).mockResolvedValueOnce({

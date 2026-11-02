@@ -48,7 +48,7 @@ export const MeetingIntelligenceResultSchema = z.object({
       z.object({
         title: z.string().max(255),
         description: z.string(),
-        status: z.enum(['PROPOSED', 'CONFIRMED', 'CANCELLED']),
+        status: z.enum(['PROPOSED', 'CONFIRMED', 'CANCELLED', 'CONDITIONAL', 'ESTIMATE', 'SUGGESTION']),
         quote: z.string().min(1),
       }),
     )
@@ -250,6 +250,7 @@ SAFETY & INTEGRITY DIRECTIVES:
 - Identify participants and speaker names from explicit transcript evidence. Extract a role or email ONLY when explicitly stated; otherwise return null. Do not infer job titles or turn anonymous speaker labels into invented identities.
 - Do NOT fabricate speaker identities or assignees. If a task owner is not mentioned or confirmed, assigneeName must be null.
 - Do NOT invent specific deadlines. Only extract due dates that were explicitly mentioned or agreed to in the meeting (relative to the meeting date: ${meetingDate.toISOString()} in timezone ${timezone}). Format as ISO 8601 if resolved, or null.
+- Classify estimates as ESTIMATE, suggestions as SUGGESTION, proposals as PROPOSED, and gated decisions as CONDITIONAL. Preserve the full dependency (who must confirm what, and what is blocked until then) verbatim in decision and task descriptions. Never assume a prerequisite was met. A withdrawal (including launch date TBD) is an explicit decision; capture it even when no replacement value exists.
 - Extract confirmed decisions in decisions; retain proposed/cancelled statements in decisionRecords. Use exact transcript quotes for execution evidence. New promises only in actionItems; repeated, completed or changed commitments belong in commitmentUpdates. Never mark a task complete merely because completion is requested or proposed. Suggest 2–3 highly relevant, distinct draft actions per meeting when supported by the transcript, ranked by usefulness. Include exact supporting quotes, copied verbatim from a single transcript segment. Do not pad suggestions when evidence is insufficient. Suggest drafts only; never claim emails were sent.
 - Output MUST be valid JSON adhering strictly to the requested schema.`;
 
@@ -265,7 +266,7 @@ ${transcriptText}
 Extract structured intelligence in JSON matching this schema:
 {
   "commitmentUpdates": [{"title":"Existing deliverable mentioned","ownerName":null,"state":"COMPLETED | DELAYED | BLOCKED | DEADLINE_CHANGED | REPEATED","dueDate":null,"quote":"Exact supporting transcript quote"}],
-  "decisionRecords": [{"title":"Decision topic","description":"Original decision statement","status":"PROPOSED | CONFIRMED | CANCELLED","quote":"Exact supporting transcript quote"}],
+  "decisionRecords": [{"title":"Decision topic","description":"Original decision statement","status":"PROPOSED | CONFIRMED | CANCELLED | CONDITIONAL | ESTIMATE | SUGGESTION","quote":"Exact supporting transcript quote"}],
   "actionSuggestions": [{"type":"FOLLOW_UP_DRAFT | DOCUMENT_DRAFT | IMPLEMENTATION_PLAN | DECISION_BRIEF","title":"Useful draft action","instructions":"What a draft should contain, grounded in this meeting","quote":"Exact supporting transcript quote"}],
   "participants": [{ "name": "Explicitly named person or speaker label", "role": null, "email": null }],
   "overview": "Concise executive overview of what was discussed and concluded (2-4 sentences).",

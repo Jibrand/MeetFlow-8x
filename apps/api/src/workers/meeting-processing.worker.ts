@@ -1,5 +1,6 @@
 import '../env';
 import {
+  reconcileProjectDecisions,
   prepareExecution,
   persistExecution,
   generateArtifact,
@@ -152,7 +153,7 @@ export async function processMeetingIntelligence(
       ),
   });
 
-  const prepared = await prepareExecution(meeting.projectId, aiResult);
+  const prepared = await prepareExecution(meeting.projectId, aiResult, meeting, parseResult.segments);
   await updateJobProgress(meetingId, 'ANALYZING', 75, 'RUNNING');
 
   // --- STAGE 3: SAVING STRUCTURED RESULTS & ACTION ITEMS (Progress 80-95%) ---
@@ -365,8 +366,12 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
   const worker = new Worker<MeetingJobPayload>(
     MEETING_PROCESSING_QUEUE_NAME,
     async (job: Job<MeetingJobPayload>) => {
-      const { meetingId, summaryVariantId, generationId, executionActionId } =
+      const { meetingId, summaryVariantId, generationId, executionActionId, decisionProjectId } =
         job.data;
+      if (decisionProjectId) {
+        await reconcileProjectDecisions(decisionProjectId);
+        return;
+      }
       if (executionActionId && generationId) {
         try {
           await generateArtifact(executionActionId, generationId);

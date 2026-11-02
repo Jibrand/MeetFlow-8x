@@ -55,7 +55,8 @@ describe('Sidebar Component', () => {
     expect(screen.getByText('Action Items')).toBeDefined();
     expect(screen.getByText('Calendar')).toBeDefined();
     expect(screen.getByText('Ask MeetFlow')).toBeDefined();
-    expect(screen.getByText('Settings')).toBeDefined();
+    expect(screen.queryByText('AI Actions')).toBeNull();
+    expect(screen.getByText('Decision Memory')).toBeDefined();
   });
 
   it('triggers onToggleCollapse when collapse button is clicked', () => {

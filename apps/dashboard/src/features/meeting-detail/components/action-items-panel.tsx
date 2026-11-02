@@ -32,7 +32,7 @@ export function ActionItemsPanel({
   const openCount = items.filter((i) => !i.completed).length;
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-3 rounded-xl border border-amber-200/50 bg-amber-50/30 p-3 shadow-[0_3px_14px_-8px_rgba(234,179,8,0.25)] dark:border-amber-200/10 dark:bg-amber-100/[0.025]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -54,7 +54,7 @@ export function ActionItemsPanel({
 
       {/* List */}
       {items.length > 0 ? (
-        <div className="space-y-2">
+        <div role="region" aria-label="Action items" tabIndex={0} className="max-h-[min(26rem,55vh)] space-y-2 overflow-y-auto overscroll-contain scroll-smooth pr-1 motion-reduce:scroll-auto">
           {items.map((item) => (
             <div
               key={item.id}
@@ -133,7 +133,7 @@ export function ActionItemsPanel({
                   </button>
                 )}
 
-                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                   <button
                     type="button"
                     onClick={() => onEdit(item)}
@@ -161,6 +161,6 @@ export function ActionItemsPanel({
           one.
         </div>
       )}
-    </div>
+    </section>
   );
 }

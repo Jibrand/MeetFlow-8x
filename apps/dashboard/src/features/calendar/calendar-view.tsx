@@ -192,11 +192,7 @@ export function CalendarView() {
             Try Again
           </Button>
         </div>
-      ) : meetings.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
-          No meetings in this workspace yet. Add a meeting to see it here.
-        </div>
-      ) : viewMode === 'month' ? (
+      ) : viewMode === 'month' || meetings.length === 0 ? (
         /* Month Calendar View */
         <div className="space-y-6">
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4">
@@ -340,6 +336,7 @@ export function CalendarView() {
             </div>
           </div>
 
+          {meetings.length === 0 && <p role="status" className="text-center text-xs text-muted-foreground">No meetings scheduled</p>}
           {/* Selected Date Detail Drawer / List */}
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-border/60 pb-3">

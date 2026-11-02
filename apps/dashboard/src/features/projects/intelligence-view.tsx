@@ -15,7 +15,7 @@ import {
 import { apiClient } from '../../lib/api-client';
 import { useProjectContext, useExecutionInvalidation } from './project-context';
 import { Evidence } from './board-view';
-const decisionLabel = (status: string): string => ({ CONFIRMED: 'Confirmed decision', PROPOSED: 'Proposed plan', CANCELLED: 'Cancelled', SUPERSEDED: 'Superseded' } as Record<string, string>)[status] ?? status;
+const decisionLabel = (status: string): string => ({ ACTIVE: 'Active · Confirmed decision', REVISED: 'Revised', CONFLICTING: 'Conflicting · Needs review', CONDITIONAL: 'Conditional · Prerequisite unverified', ESTIMATE: 'Estimate', SUGGESTION: 'Suggestion', CONFIRMED: 'Confirmed decision', PROPOSED: 'Proposed plan', CANCELLED: 'Cancelled', SUPERSEDED: 'Superseded' } as Record<string, string>)[status] ?? status;
 interface Decision {
   id: string;
   title: string;
@@ -54,6 +54,7 @@ interface Action {
   } | null;
 }
 interface Intelligence {
+  reconciliation?: 'pending' | 'failed' | 'unavailable' | null;
   decisions: Decision[];
   conflicts: Conflict[];
   actions: Action[];
@@ -90,7 +91,7 @@ export function IntelligenceView({
     staleTime: 20_000,
     retry: false,
     refetchInterval: (q) =>
-      q.state.data?.actions.some((a) =>
+      q.state.data?.reconciliation === 'pending' || q.state.data?.actions.some((a) =>
         ['QUEUED', 'RUNNING'].includes(a.status),
       )
         ? 2500
@@ -147,7 +148,7 @@ export function IntelligenceView({
           </h1>
           {!compact && (
             <p className="text-xs text-muted-foreground">
-              {mode === 'decisions' ? 'Decisions and proposed plans, linked to the original conversation.' : 'Useful drafts grounded in your meetings.'}
+              {mode === 'decisions' ? 'Current decisions, unresolved dependencies and preserved history, ordered by meeting date.' : 'Useful drafts grounded in your meetings.'}
             </p>
           )}
         </div>
@@ -173,6 +174,11 @@ export function IntelligenceView({
           </Button>
         )}
       </header>
+      {mode === 'decisions' && query.data?.reconciliation && (
+        <p role="status" className="rounded-lg border border-amber-200/40 bg-amber-50/30 p-3 text-xs text-muted-foreground dark:bg-amber-100/5">
+          {query.data.reconciliation === 'pending' ? 'Reconciling saved decision history… Original sources remain available below.' : 'Decision reconciliation is unavailable. Saved history is shown; decision changes have not been fully checked. Retry meeting processing after the worker is available.'}
+        </p>
+      )}
       <div className={compact ? 'intelligence-scroll min-h-0 overflow-y-auto overscroll-contain pr-1' : undefined} tabIndex={compact ? 0 : undefined} aria-label={compact ? 'AI action suggestions' : undefined}>
       {query.isPending ? (
         <Skeleton className="h-32" />
@@ -186,7 +192,7 @@ export function IntelligenceView({
       ) : mode === 'decisions' ? (
         <>
           <section className="space-y-3">
-            <h2 className="text-sm font-medium">Potential conflicts</h2>
+            <h2 className="text-sm font-medium">Decision changes & conflicts</h2>
             {query.data?.conflicts.length ? (
               query.data.conflicts.map((conflict) => (
                 <article
@@ -194,7 +200,7 @@ export function IntelligenceView({
                   className="space-y-3 rounded-xl border bg-card p-4"
                 >
                   <p className="text-xs font-medium text-muted-foreground">
-                    {conflict.status === 'PENDING' ? 'Needs review · Potential conflict' : conflict.status === 'DISMISSED' ? 'Dismissed relationship' : 'Confirmed change'}
+                    {conflict.status === 'PENDING' ? 'Needs review · Potential conflict' : conflict.status === 'DISMISSED' ? 'Dismissed relationship' : conflict.status === 'REVISED' ? 'Revised decision' : conflict.status === 'REAFFIRMED' ? 'Reaffirmed decision' : 'Confirmed change · Superseded'}
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {[conflict.previousDecision, conflict.newDecision].map(
@@ -247,12 +253,12 @@ export function IntelligenceView({
               ))
             ) : (
               <p className="text-xs text-muted-foreground">
-                No possible decision changes in this project.
+                {query.data?.reconciliation ? 'Decision comparisons are not yet complete.' : 'No reconciled decision relationships yet.'}
               </p>
             )}
           </section>
           <section className="space-y-3">
-            <h2 className="text-sm font-medium">Decision timeline</h2>
+            <h2 className="text-sm font-medium">Current decisions & history</h2>
             {query.data?.decisions.length ? (
               query.data.decisions.map((decision) => (
                 <article
@@ -261,7 +267,7 @@ export function IntelligenceView({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-medium">{decision.title}</h3>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${decision.status === 'CONFIRMED' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${['ACTIVE', 'CONFIRMED'].includes(decision.status) ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
                       {decisionLabel(decision.status)}
                     </span>
                   </div>

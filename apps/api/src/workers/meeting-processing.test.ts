@@ -4,8 +4,14 @@ import type { MeetingJobPayload } from '../queues/meeting-processing.queue';
 
 const mocks = vi.hoisted(() => {
   const db = {
+    project: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    decision: { findMany: vi.fn(), createMany: vi.fn(), updateMany: vi.fn() },
+    decisionConflict: { findMany: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
+    aIAction: { findMany: vi.fn(), createMany: vi.fn() },
+    commitmentHistory: { createMany: vi.fn() },
     meeting: {
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -99,11 +105,17 @@ beforeEach(async () => {
       ? operation(mocks.db)
       : Promise.all(operation),
   );
+  mocks.db.project.findUniqueOrThrow.mockResolvedValue({ id: 'project', needsReview: false });
+  mocks.db.decision.findMany.mockResolvedValue([]);
+  mocks.db.decisionConflict.findMany.mockResolvedValue([]);
+  mocks.db.aIAction.findMany.mockResolvedValue([]);
+  mocks.db.meeting.findUniqueOrThrow.mockResolvedValue({ id: meetingId, projectId: 'project', decisions: [], actionItems: [], commitments: [] });
   mocks.db.meeting.updateMany.mockResolvedValue({ count: 1 });
   mocks.db.meeting.findMany.mockResolvedValue([]);
   mocks.db.meeting.findUnique.mockResolvedValue({
     id: meetingId,
     workspaceId: 'ws',
+    projectId: 'project',
     title: 'Real transcript test',
     startAt: new Date(),
     timezone: 'UTC',
@@ -122,6 +134,7 @@ beforeEach(async () => {
   mocks.queue.getWorkers.mockResolvedValue([{}]);
   mocks.queue.isPaused.mockResolvedValue(false);
   mocks.analyze.mockResolvedValue({
+    commitmentUpdates: [], decisionRecords: [], actionSuggestions: [],
     participants: [{ name: 'Alice', role: 'Product manager' }],
     overview: 'The release was agreed.',
     keyPoints: ['Ship the release'],
@@ -131,6 +144,8 @@ beforeEach(async () => {
     actionItems: [
       {
         title: 'Send release notes',
+        quote: 'I will send the release notes.',
+        priority: 'medium',
         description: '',
         assigneeName: 'Bob',
         dueDate: null,
@@ -219,6 +234,7 @@ describe('Meeting queue and processing lifecycle', () => {
       {
         id: 'manual-action',
         title: 'Send release notes',
+        assigneeName: 'Bob',
         source: 'MANUAL',
         status: 'TODO',
       },

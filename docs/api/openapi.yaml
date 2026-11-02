@@ -1228,7 +1228,7 @@ paths:
       - { in: query, name: search, schema: { type: string, maxLength: 200 } }
     get:
       summary: Read project decisions/conflicts and saved actions; optional meetingId restricts actions
-      description: Decision timeline is ordered by source meeting start time, newest first. Evidence retains the matched transcript quote, speaker and offset when available; proposed plans remain distinct from confirmed decisions.
+      description: Decision timeline is ordered by source meeting start time, newest first. Decisions expose ACTIVE, SUPERSEDED, CONFLICTING, CONDITIONAL, PROPOSED, ESTIMATE or SUGGESTION status and preserve originalStatus and source evidence. Relationships include SUPERSEDED, REVISED and REAFFIRMED; ambiguous conflicts remain PENDING for review. Proposals and unmet prerequisites never supersede confirmed decisions. Evidence retains the exact matched quote, speaker and offset. The response also includes reconciliation (pending, failed, unavailable, or null). Legacy decision history queues background repair on the existing worker; no transcript is re-extracted. While pending or unavailable, the UI must not claim that no changes exist.
       security:
         - cookieAuth: []
       responses:

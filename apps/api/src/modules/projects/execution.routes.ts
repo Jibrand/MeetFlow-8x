@@ -1,9 +1,11 @@
+import { persistReconciliation } from '../../services/decision-reconciliation';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { requireProject, projectId } from './projects.routes';
 import { processingTransaction } from '../../services/processing-transaction';
 import {
+  scheduleLegacyReconciliation,
   refreshSuggestions,
   requestArtifact,
 } from '../../services/execution-intelligence';
@@ -86,7 +88,9 @@ executionRouter.get('/projects/:id/intelligence', async (req, res, next) => {
         },
       }),
     ]);
-    res.json({ success: true, data: { decisions, conflicts, actions } });
+    const legacy = decisions.some((d) => ['CONFIRMED', 'CANCELLED'].includes(d.status));
+    const reconciliation = legacy ? project.needsReview ? 'unavailable' : await scheduleLegacyReconciliation(project.id, req.workspaceId!) : null;
+    res.json({ success: true, data: { decisions, conflicts, actions, reconciliation } });
   } catch (e) {
     next(e);
   }
@@ -102,6 +106,7 @@ executionRouter.post(
         .strict()
         .parse(req.body);
       const result = await processingTransaction(async (tx) => {
+        await tx.project.update({ where: { id: project.id }, data: { updatedAt: new Date() } });
         const item = await tx.decisionConflict.findFirstOrThrow({
           where: { id, projectId: project.id },
         });
@@ -141,6 +146,8 @@ executionRouter.post(
             ],
           });
         }
+        const decisions = await tx.decision.findMany({ where: { projectId: project.id }, include: { meeting: { select: { startAt: true } } } });
+        await persistReconciliation(tx, project.id, decisions, []);
         return tx.decisionConflict.findUniqueOrThrow({ where: { id } });
       });
       res.json({ success: true, data: result });
