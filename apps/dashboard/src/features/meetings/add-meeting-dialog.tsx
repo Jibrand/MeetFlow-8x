@@ -299,19 +299,16 @@ export function AddMeetingDialog({
             }
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-2">
+            {/* <TabsList className="grid w-full grid-cols-">
               <TabsTrigger value="transcript" className="gap-1.5 text-xs">
                 <FileText className="h-3.5 w-3.5" />
                 <span>Upload Transcript</span>
               </TabsTrigger>
-              <TabsTrigger value="recording" className="gap-1.5 text-xs">
-                <Video className="h-3.5 w-3.5" />
-                <span>Upload Recording</span>
-              </TabsTrigger>
-            </TabsList>
+            
+            </TabsList> */}
 
             {/* TAB 1: UPLOAD TRANSCRIPT (Fully Implemented) */}
-            <TabsContent value="transcript" className="space-y-4 pt-3">
+            <TabsContent value="transcript" className="space-y- pt-3">
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Meeting Title */}
                 <div className="space-y-1">
