@@ -1,11 +1,16 @@
 # Workspace Agent Guidelines & Logging
 
-## Agent Capture Requirement
-- All user prompts and final model responses must be automatically captured in `.agent-logs/` matching the format: `YYYY-MM-DD_HH-MM-SS_<session-id>.md`.
-- Capture is wired via `.agents/hooks.json` (`Stop` and `PostToolUse` lifecycle hooks) and backed by the active daemon `.agents/watcher.js` running against the IDE's transcript store at `C:\Users\Jibran\.gemini\antigravity\brain\`.
-- Whenever a turn finishes or code changes are committed, ensure logs in `.agent-logs/` are staged and committed alongside code.
-- Never overwrite, reset, delete, rewrite, or clean existing agent logs.
-- Never add `.agent-logs/` to `.gitignore`. It ships with the repository.
+## Codex Conversation Logging Requirement
+- Codex is the current coding assistant; GitHub Copilot capture is out of scope.
+- At each turn, append the user's exact prompt and the exact final response to a session Markdown or JSONL file under `.agent-logs/`, named `YYYY-MM-DD_HH-MM-SS_<session-id>.md` (or `.jsonl`). Prepare the final response, record it, then send that same text.
+- Record source, session identifier, and timestamps with timezone. If native session identifiers or message timestamps are unavailable, label a generated logging-session identifier and the capture time explicitly; never invent message times.
+- This is assistant-maintained logging, not verified automatic runtime capture. The legacy `.agents/hooks.json`, `capture.js`, and `watcher.js` target Antigravity and do not establish Codex capture. Git hooks cannot capture chat messages.
+- Preserve all historical logs. Append only; never overwrite, reset, delete, rewrite, clean, or ignore `.agent-logs/`.
+- Record capture gaps explicitly, including interrupted turns, unavailable earlier conversations, compaction, truncation, and missing attachments or tool output. Never reconstruct missing dialogue or label a summary as a verbatim transcript.
+- Before committing, review new log content for secrets and credentials. Replace sensitive values with an explicit `[REDACTED: reason]` marker before writing; do not record `.env` contents. Preserve prior files and report any historical secret exposure without echoing it.
+- Commit reviewed new log entries incrementally alongside the code they produced. Stage explicit paths only; do not sweep unrelated work into commits. Push to GitHub when authorized and available; report permission, authentication, or network blockers honestly.
+- If capture cannot run, retain an exact manual copy of each prompt and final response from the visible chat in a new session file, with capture time and known gaps. Prefer a supported export if offered by the installed client, verify its completeness, and never scrape private app databases or assume an export feature exists.
+- See `docs/conversation-logging.md` for the current capture status and manual workflow.
 
 ---
 
