@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon",
+    "worker": "tsx src/workers/meeting-processing.worker.ts",
+    "worker:dev": "tsx watch src/workers/meeting-processing.worker.ts",
     "build": "tsup src/server.ts --format esm --out-dir dist",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",

@@ -6,6 +6,8 @@
     "dev": "pnpm --parallel --filter \"@meetflow/*\" dev",
     "dev:api": "pnpm --filter \"@meetflow/api\" dev",
     "dev:dashboard": "pnpm --filter \"@meetflow/dashboard\" dev",
+    "worker": "pnpm --filter \"@meetflow/api\" worker",
+    "dev:worker": "pnpm --filter \"@meetflow/api\" worker:dev",
     "build": "pnpm --recursive --filter \"./packages/*\" --filter \"./apps/*\" build",
     "lint": "pnpm --recursive run lint",
     "typecheck": "pnpm --recursive run typecheck",

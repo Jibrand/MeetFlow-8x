@@ -1,0 +1,658 @@
+import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../../lib/prisma';
+import {
+  CreateMeetingSchema,
+  UpdateMeetingSchema,
+  UploadTranscriptSchema,
+  ListMeetingsQuerySchema,
+} from './meetings.schema';
+import { enqueueMeetingProcessing } from '../../queues/meeting-processing.queue';
+import { transcriptParserService } from '../../services/transcript-parser.service';
+
+export class MeetingsController {
+  /**
+   * POST /api/v1/meetings
+   * Create meeting, optionally attach transcript and enqueue background processing.
+   */
+  async createMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const userId = req.user!.userId;
+      const input = CreateMeetingSchema.parse(req.body);
+
+      const hasTranscript = Boolean(input.transcript && input.transcript.rawText.trim());
+
+      const meeting = await prisma.$transaction(async (tx) => {
+        const created = await tx.meeting.create({
+          data: {
+            workspaceId,
+            createdById: userId,
+            title: input.title,
+            description: input.description,
+            startAt: new Date(input.startAt),
+            endAt: input.endAt ? new Date(input.endAt) : null,
+            timezone: input.timezone,
+            meetingStatus: input.meetingStatus,
+            processingStatus: hasTranscript ? 'QUEUED' : 'NOT_STARTED',
+            sourceType: hasTranscript ? 'TRANSCRIPT_UPLOAD' : input.sourceType,
+            participants: {
+              create: (input.participants || []).map((p) => ({
+                name: p.name,
+                email: p.email || null,
+                role: p.role || null,
+              })),
+            },
+          },
+          include: {
+            participants: true,
+          },
+        });
+
+        if (hasTranscript && input.transcript) {
+          await tx.meetingTranscript.create({
+            data: {
+              meetingId: created.id,
+              rawText: input.transcript.rawText,
+              sourceFilename: input.transcript.sourceFilename,
+              sourceFormat: input.transcript.sourceFormat,
+              parserVersion: transcriptParserService.constructor.name ? '1.0.0' : '1.0.0',
+            },
+          });
+        }
+
+        return created;
+      });
+
+      // Enqueue background processing if transcript provided
+      let queueStatus = 'NOT_QUEUED';
+      if (hasTranscript) {
+        const queueResult = await enqueueMeetingProcessing({
+          meetingId: meeting.id,
+          workspaceId,
+        });
+        queueStatus = queueResult.status;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {
+          ...meeting,
+          queueStatus,
+        },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/meetings/overview
+   * Consolidated statistics for the Overview dashboard
+   */
+  async getOverviewStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const now = new Date();
+
+      const [totalMeetings, recordedMeetings, openItems, doneItems, overdueItems, recentMeetings, attentionItems] =
+        await Promise.all([
+          prisma.meeting.count({ where: { workspaceId } }),
+          prisma.meeting.count({
+            where: {
+              workspaceId,
+              processingStatus: { in: ['READY', 'QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'] },
+            },
+          }),
+          prisma.actionItem.count({
+            where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
+          }),
+          prisma.actionItem.count({
+            where: { workspaceId, status: 'DONE' },
+          }),
+          prisma.actionItem.count({
+            where: {
+              workspaceId,
+              status: { in: ['TODO', 'IN_PROGRESS'] },
+              dueDate: { lt: now },
+            },
+          }),
+          prisma.meeting.findMany({
+            where: { workspaceId },
+            orderBy: { startAt: 'desc' },
+            take: 5,
+            include: {
+              participants: true,
+              summary: {
+                select: { overview: true },
+              },
+              _count: {
+                select: { actionItems: true },
+              },
+            },
+          }),
+          prisma.actionItem.findMany({
+            where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } },
+            orderBy: { dueDate: 'asc' },
+            take: 5,
+            include: {
+              meeting: {
+                select: { id: true, title: true },
+              },
+            },
+          }),
+        ]);
+
+      // Calculate total duration in hours
+      const meetingsWithDuration = await prisma.meeting.findMany({
+        where: { workspaceId },
+        select: { durationSeconds: true },
+      });
+      const totalSeconds = meetingsWithDuration.reduce((acc, m) => acc + (m.durationSeconds || 0), 0);
+      const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalMeetings,
+          recordedMeetings,
+          totalHours,
+          openActionItems: openItems,
+          completedActionItems: doneItems,
+          overdueActionItems: overdueItems,
+          recentMeetings,
+          attentionItems,
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/meetings
+   * List meetings for the active workspace with pagination, filters, and counts.
+   */
+  async listMeetings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const query = ListMeetingsQuerySchema.parse(req.query);
+
+      const where: any = { workspaceId };
+
+      if (query.status) {
+        where.meetingStatus = query.status;
+      }
+      if (query.processingStatus) {
+        where.processingStatus = query.processingStatus;
+      }
+      if (query.search) {
+        where.OR = [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+        ];
+      }
+      if (query.startDate || query.endDate) {
+        where.startAt = {};
+        if (query.startDate) where.startAt.gte = new Date(query.startDate);
+        if (query.endDate) where.startAt.lte = new Date(query.endDate);
+      }
+
+      const total = await prisma.meeting.count({ where });
+      const totalPages = Math.ceil(total / query.limit) || 1;
+      const skip = (query.page - 1) * query.limit;
+
+      const meetings = await prisma.meeting.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { startAt: 'desc' },
+        include: {
+          participants: true,
+          summary: {
+            select: {
+              overview: true,
+              keyPoints: true,
+              decisions: true,
+              topics: true,
+            },
+          },
+          _count: {
+            select: {
+              actionItems: true,
+              segments: true,
+              transcripts: true,
+            },
+          },
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          meetings: meetings.map((m) => ({
+            id: m.id,
+            workspaceId: m.workspaceId,
+            title: m.title,
+            description: m.description,
+            startAt: m.startAt,
+            endAt: m.endAt,
+            timezone: m.timezone,
+            meetingStatus: m.meetingStatus,
+            processingStatus: m.processingStatus,
+            sourceType: m.sourceType,
+            durationSeconds: m.durationSeconds,
+            recordingUrl: m.recordingUrl,
+            participants: m.participants,
+            summary: m.summary,
+            actionItemCount: m._count.actionItems,
+            segmentCount: m._count.segments,
+            hasTranscript: m._count.transcripts > 0,
+            createdAt: m.createdAt,
+            updatedAt: m.updatedAt,
+          })),
+          pagination: {
+            total,
+            page: query.page,
+            limit: query.limit,
+            totalPages,
+          },
+        },
+        meta: {
+          requestId: req.id,
+          timestamp: new Date().toISOString(),
+          version: 'v1',
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/meetings/:id
+   * Get complete meeting details.
+   */
+  async getMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+
+      const meeting = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+        include: {
+          participants: true,
+          transcripts: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              sourceFilename: true,
+              sourceFormat: true,
+              parserVersion: true,
+              createdAt: true,
+            },
+          },
+          summary: true,
+          actionItems: {
+            orderBy: { createdAt: 'asc' },
+          },
+          segments: {
+            orderBy: { sequence: 'asc' },
+          },
+          processingJobs: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      if (!meeting) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found in this workspace.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: meeting,
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/meetings/:id
+   * Update meeting metadata.
+   */
+  async updateMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+      const input = UpdateMeetingSchema.parse(req.body);
+
+      const existing = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+      });
+
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      const updated = await prisma.meeting.update({
+        where: { id },
+        data: {
+          ...(input.title ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.startAt ? { startAt: new Date(input.startAt) } : {}),
+          ...(input.endAt !== undefined ? { endAt: input.endAt ? new Date(input.endAt) : null } : {}),
+          ...(input.timezone ? { timezone: input.timezone } : {}),
+          ...(input.meetingStatus ? { meetingStatus: input.meetingStatus } : {}),
+        },
+        include: {
+          participants: true,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updated,
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/meetings/:id
+   * Delete meeting.
+   */
+  async deleteMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+
+      const existing = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+      });
+
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      await prisma.meeting.delete({
+        where: { id },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { id, deleted: true },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /api/v1/meetings/:id/transcript
+   * Upload or attach transcript to an existing meeting and enqueue processing.
+   */
+  async uploadTranscript(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+      const input = UploadTranscriptSchema.parse(req.body);
+
+      const existing = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+      });
+
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      await prisma.$transaction([
+        prisma.meetingTranscript.create({
+          data: {
+            meetingId: id,
+            rawText: input.rawText,
+            sourceFilename: input.sourceFilename,
+            sourceFormat: input.sourceFormat,
+            parserVersion: '1.0.0',
+          },
+        }),
+        prisma.meeting.update({
+          where: { id },
+          data: {
+            sourceType: 'TRANSCRIPT_UPLOAD',
+            processingStatus: 'QUEUED',
+          },
+        }),
+      ]);
+
+      const queueResult = await enqueueMeetingProcessing({
+        meetingId: id,
+        workspaceId,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          meetingId: id,
+          sourceFilename: input.sourceFilename,
+          sourceFormat: input.sourceFormat,
+          queueStatus: queueResult.status,
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/meetings/:id/transcript
+   * Get raw transcript and segments.
+   */
+  async getTranscript(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+
+      const meeting = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+        include: {
+          transcripts: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          segments: {
+            orderBy: { sequence: 'asc' },
+          },
+        },
+      });
+
+      if (!meeting) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      const latestTranscript = meeting.transcripts[0] || null;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          meetingId: id,
+          hasTranscript: Boolean(latestTranscript),
+          transcript: latestTranscript,
+          segments: meeting.segments,
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/meetings/:id/processing
+   * Polling endpoint: Get live background processing status.
+   */
+  async getProcessingStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+
+      const meeting = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+        select: {
+          id: true,
+          processingStatus: true,
+          meetingStatus: true,
+          processingJobs: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      if (!meeting) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      const latestJob = meeting.processingJobs[0];
+
+      // Estimated progress map by stage
+      const stageProgressMap: Record<string, number> = {
+        NOT_STARTED: 0,
+        QUEUED: 5,
+        PARSING: 25,
+        ANALYZING: 60,
+        FINALIZING: 90,
+        READY: 100,
+        FAILED: 0,
+      };
+
+      const stage = latestJob?.stage || meeting.processingStatus;
+      const progress = latestJob?.progress ?? (stageProgressMap[meeting.processingStatus] || 0);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          meetingId: id,
+          processingStatus: meeting.processingStatus,
+          stage,
+          progress,
+          attempts: latestJob?.attempts ?? 0,
+          errorCode: latestJob?.errorCode ?? null,
+          startedAt: latestJob?.startedAt ?? null,
+          completedAt: latestJob?.completedAt ?? null,
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /api/v1/meetings/:id/reprocess
+   * Trigger reprocessing for a meeting with existing transcript.
+   */
+  async reprocessMeeting(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const workspaceId = req.workspaceId!;
+      const { id } = req.params;
+
+      const meeting = await prisma.meeting.findFirst({
+        where: { id, workspaceId },
+        include: {
+          transcripts: {
+            take: 1,
+          },
+        },
+      });
+
+      if (!meeting) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'MEETING_NOT_FOUND', message: 'Meeting not found.' },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      if (meeting.transcripts.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'NO_TRANSCRIPT_TO_REPROCESS',
+            message: 'Cannot reprocess meeting without an uploaded transcript.',
+          },
+          meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+        });
+        return;
+      }
+
+      await prisma.meeting.update({
+        where: { id },
+        data: { processingStatus: 'QUEUED' },
+      });
+
+      const queueResult = await enqueueMeetingProcessing({
+        meetingId: id,
+        workspaceId,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          meetingId: id,
+          processingStatus: 'QUEUED',
+          queueStatus: queueResult.status,
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+}
+
+export const meetingsController = new MeetingsController();

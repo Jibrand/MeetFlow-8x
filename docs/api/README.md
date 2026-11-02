@@ -17,6 +17,7 @@ All client-facing endpoints are namespaced under the versioned prefix:
   - **Refresh Tokens**: Opaque 32-byte cryptographically secure random tokens, hashed via SHA-256 before storage in Neon PostgreSQL (`auth_sessions`), rotated on each refresh, and transported via `httpOnly` cookie (`meetflow_refresh_token`).
 - **Never Expose Tokens to JavaScript**: No tokens or sensitive user credentials are saved in `localStorage` or `sessionStorage`.
 - **Strict Input Validation**: Every endpoint validates incoming payloads against typed Zod schemas.
+- **Background Job Execution**: Transcripts are processed asynchronously via BullMQ + Redis workers. Meeting records in Neon act as the durable single source of truth.
 
 ---
 
@@ -79,6 +80,20 @@ All client-facing endpoints are namespaced under the versioned prefix:
 | `PATCH` | `/api/v1/onboarding` | Yes | Save professional role, use cases, and current step |
 | `POST` | `/api/v1/onboarding/workspace` | Yes | Provision or configure workspace during onboarding |
 | `POST` | `/api/v1/onboarding/complete` | Yes | Mark onboarding completed |
+| `POST` | `/api/v1/meetings` | Yes (Workspace) | Create meeting, optionally attach transcript & enqueue processing |
+| `GET` | `/api/v1/meetings` | Yes (Workspace) | List workspace meetings with pagination, status & search filters |
+| `GET` | `/api/v1/meetings/overview` | Yes (Workspace) | Overview dashboard analytics and KPI aggregations |
+| `GET` | `/api/v1/meetings/:id` | Yes (Workspace) | Fetch comprehensive meeting intelligence, summary & segments |
+| `PATCH` | `/api/v1/meetings/:id` | Yes (Workspace) | Update meeting metadata, title, times, or lifecycle status |
+| `DELETE` | `/api/v1/meetings/:id` | Yes (Workspace) | Delete meeting and cascading segments/jobs |
+| `POST` | `/api/v1/meetings/:id/transcript` | Yes (Workspace) | Upload transcript and trigger asynchronous processing |
+| `GET` | `/api/v1/meetings/:id/transcript` | Yes (Workspace) | Get raw transcript and parsed turns |
+| `GET` | `/api/v1/meetings/:id/processing` | Yes (Workspace) | Poll live background processing status, stage, and progress (0-100%) |
+| `POST` | `/api/v1/meetings/:id/reprocess` | Yes (Workspace) | Re-enqueue transcript processing idempotently |
+| `GET` | `/api/v1/action-items` | Yes (Workspace) | List workspace action items with status & search filters |
+| `POST` | `/api/v1/action-items` | Yes (Workspace) | Create manual action item |
+| `PATCH` | `/api/v1/action-items/:id` | Yes (Workspace) | Update action item status (TODO, IN_PROGRESS, DONE) and metadata |
+| `DELETE` | `/api/v1/action-items/:id` | Yes (Workspace) | Delete action item |
 
 ---
 

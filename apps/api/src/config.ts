@@ -13,6 +13,9 @@ const envSchema = z.object({
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_DAYS: z.coerce.number().default(7),
   COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+  REDIS_URL: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -45,6 +48,13 @@ export const config = {
   cookies: {
     sameSite: parsedEnv.data.COOKIE_SAME_SITE,
     secure: parsedEnv.data.NODE_ENV === 'production',
+  },
+  redis: {
+    url: parsedEnv.data.REDIS_URL,
+  },
+  openai: {
+    apiKey: parsedEnv.data.OPENAI_API_KEY,
+    model: parsedEnv.data.OPENAI_MODEL,
   },
   isProduction: parsedEnv.data.NODE_ENV === 'production',
   isTest: parsedEnv.data.NODE_ENV === 'test',

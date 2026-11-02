@@ -307,6 +307,234 @@ paths:
         '200':
           description: Onboarding marked completed.
 
+  /meetings:
+    post:
+      summary: Create Meeting & Optional Asynchronous Ingestion
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, startAt]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+                timezone: { type: string }
+                meetingStatus: { type: string, enum: [SCHEDULED, COMPLETED, CANCELLED] }
+                sourceType: { type: string, enum: [MANUAL, TRANSCRIPT_UPLOAD, AUDIO_UPLOAD, VIDEO_UPLOAD, CALENDAR] }
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      email: { type: string }
+                      role: { type: string }
+                transcript:
+                  type: object
+                  properties:
+                    rawText: { type: string }
+                    sourceFilename: { type: string }
+                    sourceFormat: { type: string, enum: [txt, srt, vtt] }
+      responses:
+        '201':
+          description: Meeting record created and background job enqueued if transcript provided.
+    get:
+      summary: List Workspace Meetings
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: processingStatus
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Paginated list of workspace meetings with summary previews and counts.
+
+  /meetings/overview:
+    get:
+      summary: Get Consolidated Overview Analytics
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Aggregated KPI metrics, recent meetings, and attention tasks.
+
+  /meetings/{id}:
+    get:
+      summary: Get Meeting Details
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Meeting details with participants, transcript metadata, summary, segments, and action items.
+    patch:
+      summary: Update Meeting Metadata
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated meeting record.
+    delete:
+      summary: Delete Meeting
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Meeting deleted successfully.
+
+  /meetings/{id}/transcript:
+    post:
+      summary: Upload Transcript to Existing Meeting
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Transcript uploaded and processing enqueued.
+    get:
+      summary: Get Transcript and Segments
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Raw transcript and ordered turns.
+
+  /meetings/{id}/processing:
+    get:
+      summary: Poll Processing Status & Progress
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Live processing status, stage, and estimated progress percentage.
+
+  /meetings/{id}/reprocess:
+    post:
+      summary: Re-enqueue Meeting Processing
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Meeting re-queued for intelligence pipeline.
+
+  /action-items:
+    get:
+      summary: List Workspace Action Items
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: meetingId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200':
+          description: Workspace action items list.
+    post:
+      summary: Create Manual Action Item
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                meetingId: { type: string }
+                assigneeName: { type: string }
+                dueDate: { type: string, format: date-time }
+                status: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+      responses:
+        '201':
+          description: Action item created.
+
+  /action-items/{id}:
+    patch:
+      summary: Update Action Item
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Action item updated.
+    delete:
+      summary: Delete Action Item
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Action item deleted.
+
 components:
   securitySchemes:
     cookieAuth:

@@ -4,6 +4,8 @@ import { authRouter } from '../modules/auth/auth.routes';
 import { usersRouter } from '../modules/users/users.routes';
 import { workspacesRouter } from '../modules/workspaces/workspaces.routes';
 import { onboardingRouter } from '../modules/onboarding/onboarding.routes';
+import { meetingsRouter } from '../modules/meetings/meetings.routes';
+import { actionItemsRouter } from '../modules/action-items/action-items.routes';
 
 export const apiRouter = Router();
 
@@ -33,6 +35,8 @@ v1Router.use('/auth', authRouter);
 v1Router.use('/users', usersRouter);
 v1Router.use('/workspaces', workspacesRouter);
 v1Router.use('/onboarding', onboardingRouter);
+v1Router.use('/meetings', meetingsRouter);
+v1Router.use('/action-items', actionItemsRouter);
 
 // Primary versioned route: /api/v1/*
 apiRouter.use('/v1', v1Router);
@@ -42,3 +46,5 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/workspaces', workspacesRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/meetings', meetingsRouter);
+apiRouter.use('/action-items', actionItemsRouter);
