@@ -201,31 +201,32 @@ function EditMeetingDialog({
         endAt: end ? new Date(end).toISOString() : null,
         participants,
       });
-      client.setQueriesData<{ meetings: MeetingItem[]; total: number }>(
-        { queryKey: ['meetings', workspaceScope()] },
-        (data) =>
-          data
-            ? {
-                ...data,
-                meetings: data.meetings.map((item) =>
-                  item.id === meeting.id
-                    ? {
-                        ...item,
-                        title: result.title,
-                        startDate: result.startAt,
-                        participants: result.participants.map(
-                          (participant) => ({
-                            ...participant,
-                            email: participant.email || '',
-                            role: participant.role || undefined,
-                          }),
-                        ),
-                      }
-                    : item,
-                ),
-              }
-            : data,
-      );
+      for (const prefix of ['meetings', 'meeting-pages'])
+        client.setQueriesData<{ meetings: MeetingItem[]; total: number }>(
+          { queryKey: [prefix, workspaceScope()] },
+          (data) =>
+            data
+              ? {
+                  ...data,
+                  meetings: data.meetings.map((item) =>
+                    item.id === meeting.id
+                      ? {
+                          ...item,
+                          title: result.title,
+                          startDate: result.startAt,
+                          participants: result.participants.map(
+                            (participant) => ({
+                              ...participant,
+                              email: participant.email || '',
+                              role: participant.role || undefined,
+                            }),
+                          ),
+                        }
+                      : item,
+                  ),
+                }
+              : data,
+        );
       onClose();
       toast.success('Meeting updated');
       void invalidateMeetingData(client);
@@ -393,25 +394,26 @@ function DeleteMeetingDialog({
         if (!(failure instanceof ApiError && failure.status === 404))
           throw failure;
       }
-      client.setQueriesData<{ meetings: MeetingItem[]; total: number }>(
-        { queryKey: ['meetings', workspaceScope()] },
-        (data) =>
-          data
-            ? {
-                ...data,
-                total: Math.max(
-                  0,
-                  data.total -
-                    (data.meetings.some((item) => item.id === meeting.id)
-                      ? 1
-                      : 0),
-                ),
-                meetings: data.meetings.filter(
-                  (item) => item.id !== meeting.id,
-                ),
-              }
-            : data,
-      );
+      for (const prefix of ['meetings', 'meeting-pages'])
+        client.setQueriesData<{ meetings: MeetingItem[]; total: number }>(
+          { queryKey: [prefix, workspaceScope()] },
+          (data) =>
+            data
+              ? {
+                  ...data,
+                  total: Math.max(
+                    0,
+                    data.total -
+                      (data.meetings.some((item) => item.id === meeting.id)
+                        ? 1
+                        : 0),
+                  ),
+                  meetings: data.meetings.filter(
+                    (item) => item.id !== meeting.id,
+                  ),
+                }
+              : data,
+        );
       client.removeQueries({ queryKey: meetingKey(meeting.id) });
       if (window.location.pathname === `/meetings/${meeting.id}`)
         await navigate({ to: '/' });

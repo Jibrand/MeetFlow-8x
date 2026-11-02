@@ -36,9 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="rounded-full bg-destructive/10 p-3 text-destructive mb-3">
             <AlertTriangle className="h-6 w-6" />
           </div>
-          <h2 className="text-base font-semibold tracking-tight">Something went wrong</h2>
+          <h2 className="text-base font-semibold tracking-tight">
+            Something went wrong
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-            {this.state.error?.message || 'An unexpected error occurred while rendering this view.'}
+            We couldn’t load this view. Please try again.
           </p>
           <Button
             variant="outline"

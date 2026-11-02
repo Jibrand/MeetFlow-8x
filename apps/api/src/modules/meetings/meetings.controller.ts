@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../lib/prisma';
 import {
@@ -221,7 +222,7 @@ export class MeetingsController {
       const workspaceId = req.workspaceId!;
       const query = ListMeetingsQuerySchema.parse(req.query);
 
-      const where: any = { workspaceId };
+      const where: Prisma.MeetingWhereInput = { workspaceId };
 
       if (query.status) {
         where.meetingStatus = query.status;
@@ -233,14 +234,40 @@ export class MeetingsController {
         where.OR = [
           { title: { contains: query.search, mode: 'insensitive' } },
           { description: { contains: query.search, mode: 'insensitive' } },
+          {
+            participants: {
+              some: { name: { contains: query.search, mode: 'insensitive' } },
+            },
+          },
+          { summary: { topics: { array_contains: [query.search] } } },
         ];
       }
       if (query.startDate || query.endDate) {
-        where.startAt = {};
-        if (query.startDate) where.startAt.gte = new Date(query.startDate);
-        if (query.endDate) where.startAt.lte = new Date(query.endDate);
+        where.startAt = {
+          ...(query.startDate ? { gte: new Date(query.startDate) } : {}),
+          ...(query.endDate ? { lte: new Date(query.endDate) } : {}),
+        };
       }
 
+      if (query.viewStatus === 'cancelled') where.meetingStatus = 'CANCELLED';
+      else if (query.viewStatus) {
+        where.meetingStatus = { not: 'CANCELLED' };
+        where.processingStatus =
+          query.viewStatus === 'processing'
+            ? { in: ['QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'] }
+            : query.viewStatus === 'ready'
+              ? 'READY'
+              : query.viewStatus === 'failed'
+                ? 'FAILED'
+                : 'NOT_STARTED';
+      }
+      if (query.platform)
+        where.sourceType =
+          query.platform === 'upload'
+            ? { in: ['TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD'] }
+            : query.platform === 'meet'
+              ? { in: ['MANUAL', 'CALENDAR'] }
+              : { in: [] };
       const totalPromise = prisma.meeting.count({ where });
       const skip = (query.page - 1) * query.limit;
 
@@ -248,7 +275,15 @@ export class MeetingsController {
         where,
         skip,
         take: query.limit,
-        orderBy: { startAt: 'desc' },
+        orderBy:
+          query.sort === 'created' || query.sort === 'newest'
+            ? [{ createdAt: 'desc' }, { id: 'desc' }]
+            : query.sort === 'longest'
+              ? [{ durationSeconds: 'desc' }, { id: 'desc' }]
+              : [
+                  { startAt: query.sort === 'oldest' ? 'asc' : 'desc' },
+                  { id: 'desc' },
+                ],
         include: {
           participants: true,
           summary: {

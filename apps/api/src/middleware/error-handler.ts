@@ -7,7 +7,7 @@ export function notFoundHandler(req: Request, res: Response) {
     success: false,
     error: {
       code: 'NOT_FOUND',
-      message: `Cannot ${req.method} ${req.originalUrl}`,
+      message: 'The requested resource was not found.',
     },
     meta: {
       requestId: req.id,
@@ -22,7 +22,7 @@ export function errorHandler(
   err: any,
   req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ) {
   // 1. Zod Validation Errors
   if (err instanceof ZodError) {
@@ -65,8 +65,19 @@ export function errorHandler(
   }
 
   // 3. Explicit HTTP Errors
-  const status = err.status || err.statusCode || (res.statusCode >= 400 ? res.statusCode : 500);
-  const code = err.code || (status === 401 ? 'UNAUTHORIZED' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR');
+  const status =
+    err.status ||
+    err.statusCode ||
+    (res.statusCode >= 400 ? res.statusCode : 500);
+  const code =
+    err.code ||
+    (status === 401
+      ? 'UNAUTHORIZED'
+      : status === 403
+        ? 'FORBIDDEN'
+        : status === 404
+          ? 'NOT_FOUND'
+          : 'INTERNAL_SERVER_ERROR');
 
   logger.error({
     message: 'Request Error',
@@ -74,7 +85,10 @@ export function errorHandler(
     code,
     status,
     error: err.message,
-    stack: process.env.NODE_ENV !== 'production' && status >= 500 ? err.stack : undefined,
+    stack:
+      process.env.NODE_ENV !== 'production' && status >= 500
+        ? err.stack
+        : undefined,
   });
 
   res.status(status).json({
@@ -82,7 +96,7 @@ export function errorHandler(
     error: {
       code,
       message:
-        status === 500 && process.env.NODE_ENV === 'production'
+        status >= 500
           ? 'An unexpected error occurred. Please try again.'
           : err.message || 'An unexpected error occurred.',
     },

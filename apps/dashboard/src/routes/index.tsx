@@ -1,5 +1,6 @@
-import { PageSkeleton } from '../components/page-skeleton';
-import { useMeetingsQuery } from '../features/meetings/use-meetings';
+import * as React from 'react';
+import type { MeetingFiltersState } from '../features/meetings/meeting-filters';
+import { useMeetingPage } from '../features/meetings/use-meetings';
 import { createRoute } from '@tanstack/react-router';
 import { rootRoute } from './root';
 import { MeetingList } from '../features/meetings/meeting-list';
@@ -14,7 +15,61 @@ export const indexRoute = createRoute({
 });
 
 export function MeetingsPage() {
-  const query = useMeetingsQuery();
+  const [page, setPage] = React.useState(1);
+  const [filters, setFilters] = React.useState<MeetingFiltersState>(() => {
+    let layout: 'list' | 'grid' = 'grid';
+    try {
+      if (localStorage.getItem('meetflow-meeting-layout-preference') === 'list')
+        layout = 'list';
+    } catch {}
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status') || 'all';
+    const platform = params.get('platform') || 'all';
+    const sort = params.get('sort') || 'newest';
+    return {
+      search: params.get('q') || '',
+      status: ([
+        'all',
+        'ready',
+        'processing',
+        'scheduled',
+        'failed',
+        'cancelled',
+      ].includes(status)
+        ? status
+        : 'all') as MeetingFiltersState['status'],
+      platform: (['all', 'zoom', 'meet', 'teams', 'upload'].includes(platform)
+        ? platform
+        : 'all') as MeetingFiltersState['platform'],
+      sort: (['newest', 'oldest', 'longest'].includes(sort)
+        ? sort
+        : 'newest') as MeetingFiltersState['sort'],
+      layout:
+        params.get('layout') === 'list'
+          ? 'list'
+          : params.get('layout') === 'grid'
+            ? 'grid'
+            : layout,
+    };
+  });
+  const [search, setSearch] = React.useState(filters.search);
+  React.useEffect(() => {
+    if (search === filters.search) return;
+    const timer = setTimeout(() => {
+      setSearch(filters.search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filters.search, search]);
+  const query = useMeetingPage(page, { ...filters, search });
+  const changeFilters = (next: MeetingFiltersState) => {
+    setFilters(next);
+    if (next.search === filters.search) setPage(1);
+  };
+  React.useEffect(() => {
+    if (query.data && page > 1 && query.data.meetings.length === 0)
+      setPage(Math.max(1, Math.ceil(query.data.total / 9)));
+  }, [query.data, page]);
   const meetings = query.data?.meetings ?? [];
   const loading = query.isPending;
   const error = query.error?.message;
@@ -49,7 +104,19 @@ export function MeetingsPage() {
             />
             <span>Refresh</span>
           </Button>
-          <AddMeetingDialog />
+          <AddMeetingDialog
+            onMeetingCreated={() => {
+              setPage(1);
+              setSearch('');
+              setFilters((old) => ({
+                ...old,
+                search: '',
+                status: 'all',
+                platform: 'all',
+                sort: 'newest',
+              }));
+            }}
+          />
         </div>
       </div>
 
@@ -67,7 +134,17 @@ export function MeetingsPage() {
 
       {/* Loading Skeleton */}
       {loading && meetings.length === 0 ? (
-        <PageSkeleton kind="meetings" />
+        <MeetingList
+          meetings={[]}
+          server={{
+            loading: true,
+            page,
+            total: 0,
+            filters,
+            onFiltersChange: changeFilters,
+            onPageChange: setPage,
+          }}
+        />
       ) : error && !query.data ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
           <AlertCircle className="h-6 w-6 text-destructive mx-auto mb-2" />
@@ -84,7 +161,10 @@ export function MeetingsPage() {
             Try Again
           </Button>
         </div>
-      ) : meetings.length === 0 ? (
+      ) : meetings.length === 0 &&
+        !filters.search &&
+        filters.status === 'all' &&
+        filters.platform === 'all' ? (
         <div className="py-12">
           <EmptyState
             icon={<Video className="h-8 w-8 text-muted-foreground" />}
@@ -94,7 +174,16 @@ export function MeetingsPage() {
         </div>
       ) : (
         /* Real Database-Backed Meetings */
-        <MeetingList meetings={meetings} />
+        <MeetingList
+          meetings={meetings}
+          server={{
+            page,
+            total: query.data?.total ?? 0,
+            filters,
+            onFiltersChange: changeFilters,
+            onPageChange: setPage,
+          }}
+        />
       )}
     </div>
   );

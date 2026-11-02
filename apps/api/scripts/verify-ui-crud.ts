@@ -91,27 +91,9 @@ try {
   await create
     .getByPlaceholder('e.g. Q4 Executive Product Strategy Sync')
     .fill(title);
-  const chips = create.getByLabel('Participants', { exact: true });
-  await chips.fill('Alice');
-  await chips.press('Enter');
-  await chips.fill('alice');
-  await chips.press('Enter');
-  await expect(
-    create.getByRole('button', { name: 'Remove Alice', exact: true }),
-  ).toHaveCount(1);
-  await chips.fill('Bob');
-  await chips.press('Enter');
-  await chips.press('Backspace');
-  await expect(
-    create.getByRole('button', { name: 'Remove Bob', exact: true }),
-  ).toHaveCount(0);
-  await chips.fill('Cara');
-  await chips.press('Enter');
-  await create
-    .getByRole('button', { name: 'Remove Cara', exact: true })
-    .click();
-  await chips.fill('Bob');
-  await chips.press('Enter');
+  await expect(create.getByLabel('Participants', { exact: true })).toHaveCount(
+    0,
+  );
   const createdResponse = page.waitForResponse(
     (response: {
       url: () => string;
@@ -131,15 +113,10 @@ try {
   let raw = await api<{ title: string; participants: { name: string }[] }>(
     `/meetings/${meetingId}`,
   );
-  if (
-    raw.participants
-      .map((p) => p.name)
-      .sort()
-      .join(',') !== 'Alice,Bob'
-  )
-    throw new Error('Created participants were not persisted in Neon.');
+  if (raw.participants.length)
+    throw new Error('New scheduled meeting unexpectedly has participants.');
   console.log(
-    'Create: Enter/duplicate prevention/Backspace/X and Neon persistence verified',
+    'Create: no participant input; acknowledged meeting appears without refresh',
   );
   await page
     .getByRole('button', { name: `Edit ${title}`, exact: true })
@@ -148,7 +125,8 @@ try {
   await edit
     .getByLabel('Meeting title', { exact: true })
     .fill(`${title} edited`);
-  await edit.getByRole('button', { name: 'Remove Alice', exact: true }).click();
+  await edit.getByLabel('Participants', { exact: true }).fill('Bob');
+  await edit.getByLabel('Participants', { exact: true }).press('Enter');
   await edit.getByLabel('Participants', { exact: true }).fill('Dana');
   await edit.getByLabel('Participants', { exact: true }).press('Enter');
   await edit.getByRole('button', { name: 'Save Changes' }).click();
@@ -227,7 +205,7 @@ try {
   await expect(checkbox).toBeChecked({ timeout: 20_000 });
   await expect(checkbox).toBeEnabled();
   await expect(
-    page.getByText('Verification failure: task not saved'),
+    page.getByText('Something went wrong. Please try again.', { exact: true }),
   ).toBeVisible();
   await page.unroute(taskUrl);
   saved = await api(`/action-items?meetingId=${meetingId}`);
@@ -293,7 +271,12 @@ try {
   await modal
     .getByRole('button', { name: 'Delete Meeting', exact: true })
     .click();
-  await expect(modal.getByRole('alert')).toContainText('Verification failure');
+  await expect(modal.getByRole('alert')).toContainText(
+    'Something went wrong. Please try again.',
+  );
+  await expect(
+    modal.getByText('Verification failure: meeting not deleted'),
+  ).toHaveCount(0);
   await modal
     .getByRole('button', { name: 'Delete Meeting', exact: true })
     .click();

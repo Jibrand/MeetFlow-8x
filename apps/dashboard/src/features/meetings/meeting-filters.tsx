@@ -1,4 +1,10 @@
-import { Search, X, SlidersHorizontal, LayoutList, LayoutGrid } from 'lucide-react';
+import {
+  Search,
+  X,
+  SlidersHorizontal,
+  LayoutList,
+  LayoutGrid,
+} from 'lucide-react';
 import { Input, Button, Badge } from '@meetflow/ui';
 import { MeetingStatus, MeetingPlatform } from '../../types/meeting';
 
@@ -15,6 +21,7 @@ export interface MeetingFiltersProps {
   onChange: (filters: MeetingFiltersState) => void;
   totalCount: number;
   filteredCount: number;
+  loading?: boolean;
 }
 
 export function MeetingFilters({
@@ -22,6 +29,7 @@ export function MeetingFilters({
   onChange,
   totalCount,
   filteredCount,
+  loading,
 }: MeetingFiltersProps) {
   const hasActiveFilters =
     filters.search.trim() !== '' ||
@@ -70,7 +78,10 @@ export function MeetingFilters({
           <select
             value={filters.status}
             onChange={(e) =>
-              onChange({ ...filters, status: e.target.value as MeetingFiltersState['status'] })
+              onChange({
+                ...filters,
+                status: e.target.value as MeetingFiltersState['status'],
+              })
             }
             aria-label="Filter by Status"
             className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -106,7 +117,10 @@ export function MeetingFilters({
           <select
             value={filters.sort}
             onChange={(e) =>
-              onChange({ ...filters, sort: e.target.value as MeetingFiltersState['sort'] })
+              onChange({
+                ...filters,
+                sort: e.target.value as MeetingFiltersState['sort'],
+              })
             }
             aria-label="Sort Order"
             className="h-8 rounded-md border border-input bg-card px-2.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -165,8 +179,15 @@ export function MeetingFilters({
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-3 w-3 opacity-60" />
           <span>
-            Showing <strong className="text-foreground">{filteredCount}</strong> of{' '}
-            {totalCount} meetings
+            {loading ? (
+              'Loading meetings…'
+            ) : (
+              <>
+                Showing{' '}
+                <strong className="text-foreground">{filteredCount}</strong> of{' '}
+                {totalCount} meetings
+              </>
+            )}
           </span>
           {hasActiveFilters && (
             <Badge variant="secondary" className="text-[9px] px-1.5 py-0">

@@ -1,4 +1,9 @@
-import { apiClient, ApiError, API_BASE_URL } from '../../lib/api-client';
+import {
+  apiClient,
+  ApiError,
+  API_BASE_URL,
+  processingFailureMessage,
+} from '../../lib/api-client';
 import {
   MeetingItem,
   ActionItemData,
@@ -226,7 +231,9 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     transcriptTurns: turns,
     actionItems,
     highlights,
-    failureReason: m.processingJobs?.[0]?.errorCode || undefined,
+    failureReason: m.processingJobs?.[0]?.errorCode
+      ? processingFailureMessage(m.processingJobs[0].errorCode)
+      : undefined,
   };
 }
 
@@ -257,10 +264,15 @@ export async function apiFetchMeetings(
     search?: string;
     page?: number;
     limit?: number;
+    viewStatus?: string;
+    platform?: string;
+    sort?: string;
   },
   signal?: AbortSignal,
 ): Promise<{ meetings: MeetingItem[]; total: number }> {
   const query = new URLSearchParams();
+  for (const key of ['viewStatus', 'platform', 'sort'] as const)
+    if (params?.[key]) query.set(key, params[key]);
   if (params?.status) query.set('status', params.status);
   if (params?.processingStatus)
     query.set('processingStatus', params.processingStatus);
@@ -278,7 +290,12 @@ export async function apiFetchMeetings(
       meetings: BackendMeeting[];
       pagination: { total: number; totalPages: number };
     }>(`/meetings?${query.toString()}`, { signal });
-    meetings.push(...res.meetings.map(mapBackendMeetingToItem));
+    const seen = new Set(meetings.map((meeting) => meeting.id));
+    meetings.push(
+      ...res.meetings
+        .filter((meeting) => !seen.has(meeting.id))
+        .map(mapBackendMeetingToItem),
+    );
     total = res.pagination.total;
     if (
       params?.page ||

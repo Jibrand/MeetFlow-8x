@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ParticipantChips, type ParticipantInput } from './participant-chips';
-import { invalidateMeetingData } from './use-meetings';
+import { insertCreatedMeeting, invalidateMeetingData } from './use-meetings';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +25,6 @@ import {
   UploadCloud,
   Calendar,
   Clock,
-  UserPlus,
 } from 'lucide-react';
 import { apiCreateMeeting, apiCreateMediaMeeting } from './meetings-api';
 
@@ -56,9 +54,6 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
   const [timezone] = React.useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   );
-  const [participants, setParticipants] = React.useState<ParticipantInput[]>(
-    [],
-  );
   const [meetingStatus, setMeetingStatus] = React.useState<
     'SCHEDULED' | 'COMPLETED'
   >('SCHEDULED');
@@ -82,7 +77,6 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
     setTranscriptFile(null);
     setTranscriptContent(null);
     setFileError(null);
-    setParticipants([]);
     setMeetingStatus('SCHEDULED');
   }, []);
 
@@ -186,7 +180,6 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
         sourceType: transcriptContent
           ? ('TRANSCRIPT_UPLOAD' as const)
           : ('MANUAL' as const),
-        participants,
         transcript:
           activeTab === 'transcript' && transcriptContent && transcriptFile
             ? {
@@ -206,9 +199,10 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
             })
           : await apiCreateMeeting(payload);
 
+      await insertCreatedMeeting(queryClient, created);
       if (created.status === 'failed') {
         toast.error(
-          'Meeting saved, but processing could not be queued. Restore Redis and retry from the meeting.',
+          'Meeting saved, but processing could not be queued. Please retry from the meeting.',
         );
       } else if (transcriptContent || mediaFile) {
         toast.success(`Meeting created! Background AI processing enqueued.`);
@@ -220,8 +214,11 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
       resetForm();
       void invalidateMeetingData(queryClient);
       onMeetingCreated?.();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to create meeting.');
+    } catch (err: unknown) {
+      toast.error(
+        (err instanceof Error ? err.message : null) ||
+          'Failed to create meeting.',
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -321,23 +318,6 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                       onChange={(e) => setEndTime(e.target.value)}
                     />
                   </div>
-                </div>
-
-                {/* Participants */}
-                <div className="space-y-1">
-                  <label
-                    htmlFor="create-participants"
-                    className="text-xs font-medium text-foreground flex items-center gap-1"
-                  >
-                    <UserPlus className="h-3 w-3 text-muted-foreground" />
-                    Participants
-                  </label>
-                  <ParticipantChips
-                    id="create-participants"
-                    value={participants}
-                    onChange={setParticipants}
-                    disabled={isSubmitting}
-                  />
                 </div>
 
                 {/* Description */}
@@ -521,17 +501,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
                     recording stays private to this workspace.
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <label htmlFor="recording-participants" className="text-xs">
-                    Participants
-                  </label>
-                  <ParticipantChips
-                    id="recording-participants"
-                    value={participants}
-                    onChange={setParticipants}
-                    disabled={isSubmitting}
-                  />
-                </div>
+
                 <DialogFooter>
                   <Button
                     type="button"

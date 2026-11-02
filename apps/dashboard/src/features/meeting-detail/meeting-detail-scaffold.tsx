@@ -1,3 +1,4 @@
+import { processingFailureMessage } from '../../lib/api-client';
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
 import { MeetingItem } from '../../types/meeting';
@@ -45,7 +46,7 @@ export function MeetingDetailScaffold({
       onReload?.();
     },
     onFailed: (errCode) => {
-      toast.error(`Processing failed: ${errCode || 'Unknown error'}`);
+      toast.error(processingFailureMessage(errCode));
       onReload?.();
     },
   });
@@ -204,9 +205,9 @@ export function MeetingDetailScaffold({
         <ErrorState
           title="Meeting Recording Failed"
           message={
-            poll.errorCode ||
-            meeting.failureReason ||
-            'Meeting processing failed. Check the processing service and retry.'
+            poll.errorCode
+              ? processingFailureMessage(poll.errorCode)
+              : meeting.failureReason || processingFailureMessage()
           }
           onRetry={handleRetry}
         />

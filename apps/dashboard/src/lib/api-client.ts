@@ -1,3 +1,24 @@
+export const backendConnectionMessage = import.meta.env.DEV
+  ? 'Backend not connected. Please try again.'
+  : 'We’re having trouble connecting. Please try again.';
+export function userSafeMessage(message: string): string {
+  return /https?:\/\/|localhost|127\.0\.0\.1|(?:Prisma|ECONN|ENOTFOUND|Transaction not found|stack trace|\bat \S+\.tsx?:\d)/i.test(
+    message,
+  )
+    ? 'Something went wrong. Please try again.'
+    : message;
+}
+export function processingFailureMessage(code?: string | null): string {
+  if (/PERSISTENCE_FAILED/.test(code ?? ''))
+    return 'The meeting was analyzed, but its results could not be saved. Please retry.';
+  if (/NO_TRANSCRIPT/.test(code ?? ''))
+    return 'No speech or transcript content was found. Please upload a non-empty file.';
+  if (/MEDIA_DECODE/.test(code ?? ''))
+    return 'This recording could not be read. Please upload a supported audio or video file.';
+  if (/TIMEOUT/.test(code ?? ''))
+    return 'Meeting processing took too long. Please retry.';
+  return 'We couldn’t finish processing this meeting. Please retry.';
+}
 export interface ApiResponse<T = any> {
   success: boolean;
   data: T;
@@ -20,7 +41,13 @@ export class ApiError extends Error {
   details?: { field?: string; message: string; code?: string }[];
 
   constructor(status: number, error: ApiErrorPayload) {
-    super(error.message);
+    super(
+      status === 0
+        ? backendConnectionMessage
+        : status >= 500
+          ? 'Something went wrong. Please try again.'
+          : userSafeMessage(error.message),
+    );
     this.name = 'ApiError';
     this.status = status;
     this.code = error.code || 'UNKNOWN_ERROR';
@@ -105,13 +132,24 @@ export async function performTokenRefresh(): Promise<boolean> {
         return true;
       }
 
+      if (res.status >= 500 || res.status === 429) {
+        throw new ApiError(0, {
+          code: 'API_UNAVAILABLE',
+          message: backendConnectionMessage,
+        });
+      }
+
       // Expected unauthenticated outcome (401 REFRESH_TOKEN_REQUIRED or INVALID_REFRESH_TOKEN)
       sessionKnownInvalid = true;
       setSessionHint(false);
       return false;
-    } catch {
+    } catch (error) {
       // Network error or backend unreachable
-      return false;
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(0, {
+        code: 'API_UNAVAILABLE',
+        message: backendConnectionMessage,
+      });
     } finally {
       refreshPromise = null;
     }
@@ -207,17 +245,13 @@ export async function apiClient<T>(
       if (options.signal?.aborted) throw error;
       throw new ApiError(0, {
         code: 'TIMEOUT',
-        message:
-          'Request to MeetFlow API timed out. Please check your backend connection.',
+        message: backendConnectionMessage,
       });
     }
     // Network / connection error (e.g. ERR_CONNECTION_REFUSED, fetch failed)
     throw new ApiError(0, {
       code: 'API_UNAVAILABLE',
-      message:
-        'Unable to connect to MeetFlow API server at ' +
-        API_BASE_URL +
-        '. Backend is offline.',
+      message: backendConnectionMessage,
     });
   } finally {
     clearTimeout(timeoutId);

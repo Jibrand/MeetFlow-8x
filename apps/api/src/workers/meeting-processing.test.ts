@@ -13,7 +13,13 @@ const mocks = vi.hoisted(() => {
     meetingProcessingJob: { upsert: vi.fn(), update: vi.fn() },
     transcriptSegment: { deleteMany: vi.fn(), createMany: vi.fn() },
     meetingSummary: { upsert: vi.fn() },
-    actionItem: { findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
+    actionItem: {
+      findMany: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      createMany: vi.fn(),
+    },
+    meetingParticipant: { findMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
   };
   return {
@@ -110,9 +116,11 @@ beforeEach(async () => {
     ],
   });
   mocks.db.actionItem.findMany.mockResolvedValue([]);
+  mocks.db.meetingParticipant.findMany.mockResolvedValue([]);
   mocks.queue.getWorkers.mockResolvedValue([{}]);
   mocks.queue.isPaused.mockResolvedValue(false);
   mocks.analyze.mockResolvedValue({
+    participants: [{ name: 'Alice', role: 'Product manager' }],
     overview: 'The release was agreed.',
     keyPoints: ['Ship the release'],
     decisions: ['Release approved'],
@@ -134,6 +142,48 @@ afterEach(() => {
 });
 
 describe('Meeting queue and processing lifecycle', () => {
+  it('persists duplicate extracted tasks once in one batch and merges speakers with grounded roles', async () => {
+    const result = await mocks.analyze();
+    mocks.analyze.mockResolvedValue({
+      ...result,
+      actionItems: [...result.actionItems, ...result.actionItems],
+    });
+    mocks.analyze.mockClear();
+    startMeetingProcessingWorker();
+    await mocks.processor!(job());
+    expect(mocks.db.actionItem.createMany).toHaveBeenCalledTimes(1);
+    expect(mocks.db.actionItem.createMany.mock.calls[0][0].data).toHaveLength(
+      1,
+    );
+    expect(mocks.db.actionItem.create).not.toHaveBeenCalled();
+    expect(mocks.db.meetingParticipant.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ name: 'Alice', role: 'Product manager' }),
+        expect.objectContaining({ name: 'Bob', role: null }),
+      ]),
+    });
+  });
+
+  it('retries an expired final transaction in a fresh scope without repeating analysis', async () => {
+    let expired = false;
+    mocks.db.meetingProcessingJob.upsert.mockImplementation((args) => {
+      if (args.update.status === 'COMPLETED' && !expired) {
+        expired = true;
+        throw Object.assign(new Error('Transaction not found'), {
+          code: 'P2028',
+        });
+      }
+      return Promise.resolve({});
+    });
+    startMeetingProcessingWorker();
+    await mocks.processor!(job());
+    expect(mocks.analyze).toHaveBeenCalledTimes(1);
+    expect(mocks.db.meetingSummary.upsert).toHaveBeenCalledTimes(2);
+    expect(mocks.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 5000,
+      timeout: 15000,
+    });
+  });
   it('fails a worker with no progress for ten minutes even if its Redis connection is alive', async () => {
     mocks.db.meeting.findMany.mockResolvedValue([
       {
@@ -174,7 +224,7 @@ describe('Meeting queue and processing lifecycle', () => {
     startMeetingProcessingWorker();
     await mocks.processor!(job());
     expect(mocks.db.actionItem.update).not.toHaveBeenCalled();
-    expect(mocks.db.actionItem.create).not.toHaveBeenCalled();
+    expect(mocks.db.actionItem.createMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -224,12 +274,14 @@ describe('Meeting queue and processing lifecycle', () => {
         }),
       }),
     );
-    expect(mocks.db.actionItem.create).toHaveBeenCalledWith(
+    expect(mocks.db.actionItem.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          title: 'Send release notes',
-          source: 'AI_EXTRACTED',
-        }),
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            title: 'Send release notes',
+            source: 'AI_EXTRACTED',
+          }),
+        ]),
       }),
     );
     expect(mocks.db.meeting.update).toHaveBeenLastCalledWith(

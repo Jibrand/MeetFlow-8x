@@ -376,6 +376,27 @@ paths:
         - in: query
           name: limit
           schema: { type: integer, default: 20 }
+        - in: query
+          name: viewStatus
+          schema:
+            {
+              type: string,
+              enum: [ready, processing, scheduled, failed, cancelled],
+            }
+          description: Dashboard lifecycle filter. Cancellation takes precedence over processing state.
+        - in: query
+          name: platform
+          schema: { type: string, enum: [zoom, meet, teams, upload] }
+          description: Matches the dashboard platform mapping. Unsupported provider origins return an empty list.
+        - in: query
+          name: sort
+          schema:
+            {
+              type: string,
+              enum: [newest, oldest, longest, created],
+              default: newest,
+            }
+          description: Newest/created order by creation time; oldest by start time; longest by duration. All orders have a deterministic ID tie-breaker.
       responses:
         '200':
           description: Paginated list of workspace meetings with summary previews and counts.

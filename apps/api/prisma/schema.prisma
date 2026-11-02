@@ -211,6 +211,7 @@ model Meeting {
 
   @@index([workspaceId])
   @@unique([calendarConnectionId, externalEventId])
+  @@index([workspaceId, createdAt, id])
   @@index([startAt])
   @@index([meetingStatus])
   @@index([processingStatus])

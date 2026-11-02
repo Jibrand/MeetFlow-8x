@@ -12,7 +12,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <div>Smooth sailing content</div>
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('Smooth sailing content')).toBeDefined();
@@ -25,11 +25,12 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ProblemChild />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText(/Something went wrong/i)).toBeDefined();
-    expect(screen.getByText(/Test explosive failure/i)).toBeDefined();
+    expect(screen.queryByText(/Test explosive failure/i)).toBeNull();
+    expect(screen.getByText(/We couldn’t load this view/i)).toBeDefined();
     expect(screen.getByRole('button', { name: /reload page/i })).toBeDefined();
 
     spy.mockRestore();

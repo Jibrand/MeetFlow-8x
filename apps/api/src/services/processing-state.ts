@@ -1,11 +1,11 @@
-import { prisma } from '../lib/prisma';
+import { processingTransaction } from './processing-transaction';
 
 export async function markProcessingFailed(
   meetingId: string,
   errorCode: string,
   expectedUpdatedAt?: Date,
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  await processingTransaction(async (tx) => {
     const changed = await tx.meeting.updateMany({
       where: {
         id: meetingId,
@@ -39,6 +39,12 @@ export async function markProcessingFailed(
 }
 
 export function processingErrorCode(error: unknown): string {
+  const databaseCode =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? error.code
+      : undefined;
+  if (databaseCode === 'P2028' || databaseCode === 'P2034')
+    return 'PERSISTENCE_FAILED: Meeting results could not be saved. Please retry.';
   const message = error instanceof Error ? error.message : '';
   const status =
     typeof error === 'object' && error !== null && 'status' in error

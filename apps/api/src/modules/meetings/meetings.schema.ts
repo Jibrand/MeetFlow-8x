@@ -5,10 +5,19 @@ export const MeetingParticipantInputSchema = z.object({
   email: z.string().email('Invalid participant email').optional().nullable(),
   role: z.string().optional().nullable(),
 });
-const ParticipantsSchema = z.array(MeetingParticipantInputSchema).max(200).superRefine((participants, context) => {
-  const names = participants.map((participant) => participant.name.toLocaleLowerCase());
-  if (new Set(names).size !== names.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Participant names must be unique.' });
-});
+const ParticipantsSchema = z
+  .array(MeetingParticipantInputSchema)
+  .max(200)
+  .superRefine((participants, context) => {
+    const names = participants.map((participant) =>
+      participant.name.toLocaleLowerCase(),
+    );
+    if (new Set(names).size !== names.length)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Participant names must be unique.',
+      });
+  });
 
 export const TranscriptInputSchema = z.object({
   rawText: z.string().min(1, 'Transcript text cannot be empty'),
@@ -19,12 +28,26 @@ export const TranscriptInputSchema = z.object({
 export const CreateMeetingSchema = z.object({
   title: z.string().min(1, 'Meeting title is required').max(255),
   description: z.string().max(2000).optional().nullable(),
-  startAt: z.string().datetime({ message: 'startAt must be a valid ISO 8601 datetime' }),
-  endAt: z.string().datetime({ message: 'endAt must be a valid ISO 8601 datetime' }).optional().nullable(),
+  startAt: z
+    .string()
+    .datetime({ message: 'startAt must be a valid ISO 8601 datetime' }),
+  endAt: z
+    .string()
+    .datetime({ message: 'endAt must be a valid ISO 8601 datetime' })
+    .optional()
+    .nullable(),
   timezone: z.string().default('UTC'),
-  meetingStatus: z.enum(['SCHEDULED', 'COMPLETED', 'CANCELLED']).default('SCHEDULED'),
+  meetingStatus: z
+    .enum(['SCHEDULED', 'COMPLETED', 'CANCELLED'])
+    .default('SCHEDULED'),
   sourceType: z
-    .enum(['MANUAL', 'TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD', 'CALENDAR'])
+    .enum([
+      'MANUAL',
+      'TRANSCRIPT_UPLOAD',
+      'AUDIO_UPLOAD',
+      'VIDEO_UPLOAD',
+      'CALENDAR',
+    ])
     .default('MANUAL'),
   participants: ParticipantsSchema.optional().default([]),
   transcript: TranscriptInputSchema.optional().nullable(),
@@ -46,9 +69,22 @@ export const UploadTranscriptSchema = TranscriptInputSchema;
 export type UploadTranscriptInput = z.infer<typeof UploadTranscriptSchema>;
 
 export const ListMeetingsQuerySchema = z.object({
+  viewStatus: z
+    .enum(['ready', 'processing', 'scheduled', 'failed', 'cancelled'])
+    .optional(),
+  platform: z.enum(['zoom', 'meet', 'teams', 'upload']).optional(),
+  sort: z.enum(['newest', 'oldest', 'longest', 'created']).default('newest'),
   status: z.enum(['SCHEDULED', 'COMPLETED', 'CANCELLED']).optional(),
   processingStatus: z
-    .enum(['NOT_STARTED', 'QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING', 'READY', 'FAILED'])
+    .enum([
+      'NOT_STARTED',
+      'QUEUED',
+      'PARSING',
+      'ANALYZING',
+      'FINALIZING',
+      'READY',
+      'FAILED',
+    ])
     .optional(),
   search: z.string().optional(),
   startDate: z.string().optional(),

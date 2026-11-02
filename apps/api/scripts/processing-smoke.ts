@@ -86,10 +86,9 @@ try {
       title: '[Verification] Meeting-processing smoke test',
       startAt: new Date().toISOString(),
       timezone: 'UTC',
-      participants: [{ name: 'Alice' }, { name: 'Bob' }],
       transcript: {
         rawText:
-          'Alice: We agreed to ship the release on Friday.\nBob: I will send the release notes.\nAlice: The release is approved.',
+          'Alice: I am the product manager. We agreed to ship the release on Friday.\nBob: I will send the release notes.\nAlice: The release is approved.',
         sourceFilename: 'pipeline-smoke.txt',
         sourceFormat: 'txt',
       },
@@ -106,6 +105,8 @@ try {
     const detail = await api<{
       summary: { overview: string } | null;
       segments: unknown[];
+      participants: { name: string; role?: string | null }[];
+      actionItems: { id: string; title: string }[];
       processingJobs: { progress: number }[];
     }>(`/meetings/${createdId}`);
     if (
@@ -116,7 +117,18 @@ try {
       throw new Error(
         'READY is missing persisted summary, transcript segments, or completion progress.',
       );
-    console.log('Persisted summary, transcript and 100% job: verified');
+    if (
+      !detail.participants.some(
+        (person) =>
+          person.name.toLowerCase().includes('alice') &&
+          person.role?.toLowerCase().includes('product'),
+      ) ||
+      !detail.participants.some((person) => person.name === 'Bob')
+    )
+      throw new Error('Automatic speakers/roles were not persisted.');
+    console.log(
+      'Persisted summary, transcript, automatic participants/role and 100% job: verified',
+    );
     // Wait for BullMQ to acknowledge completion before testing its retained-job retry path.
     const queue = getMeetingProcessingQueue();
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -130,7 +142,20 @@ try {
     terminal = true;
     if (retried.processingStatus !== 'READY')
       throw new Error(`Reprocessing failed: ${retried.errorCode}`);
-    console.log('Retained completed job reprocessing: READY');
+    const repeated = await api<{
+      actionItems: { title: string }[];
+      participants: { name: string }[];
+    }>(`/meetings/${createdId}`);
+    if (
+      new Set(repeated.participants.map((p) => p.name.toLowerCase())).size !==
+        repeated.participants.length ||
+      new Set(repeated.actionItems.map((a) => a.title.toLowerCase().trim()))
+        .size !== repeated.actionItems.length
+    )
+      throw new Error('Reprocessing introduced duplicate participants/tasks.');
+    console.log(
+      'Retained completed job reprocessing: READY, no duplicate participants/tasks',
+    );
   }
   if (terminal && createdId) {
     const job = await getMeetingProcessingQueue().getJob(

@@ -1,4 +1,5 @@
 import '../env';
+import { processingTransaction } from '../services/processing-transaction';
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { createRedisConnection, isRedisConfigured } from '../lib/redis';
 import { prisma } from '../lib/prisma';
@@ -37,6 +38,7 @@ export async function processMeetingIntelligence(
   if (!meeting) {
     throw new Error(`Meeting not found: ${meetingId}`);
   }
+  if (meeting.processingStatus === 'READY') return;
   if (meeting.processingStatus === 'FAILED') {
     logger.warn(
       'Skipping cancelled meeting job; use Retry to dispatch a new attempt',
@@ -58,23 +60,33 @@ export async function processMeetingIntelligence(
           'RUNNING',
         ),
     );
-    transcriptRecord = await prisma.meetingTranscript.create({
-      data: {
-        meetingId,
-        rawText: result.rawText,
-        sourceFilename: `${meeting.mediaFilename || 'recording'}.vtt`,
-        sourceFormat: 'vtt',
-        parserVersion: 'media-v1',
-      },
-    });
-    await prisma.meeting.update({
-      where: { id: meetingId },
-      data: {
-        durationSeconds: result.durationSeconds,
-        endAt: new Date(
-          meeting.startAt.getTime() + result.durationSeconds * 1000,
-        ),
-      },
+    transcriptRecord = await processingTransaction(async (tx) => {
+      const claimed = await tx.meeting.updateMany({
+        where: { id: meetingId, processingStatus: 'PARSING' },
+        data: {
+          durationSeconds: result.durationSeconds,
+          endAt: new Date(
+            meeting.startAt.getTime() + result.durationSeconds * 1000,
+          ),
+        },
+      });
+      if (!claimed.count) throw new UnrecoverableError('PROCESSING_CANCELLED');
+      const existing = await tx.meetingTranscript.findFirst({
+        where: { meetingId },
+        orderBy: { createdAt: 'desc' },
+      });
+      return (
+        existing ??
+        (await tx.meetingTranscript.create({
+          data: {
+            meetingId,
+            rawText: result.rawText,
+            sourceFilename: (meeting.mediaFilename || 'recording') + '.vtt',
+            sourceFormat: 'vtt',
+            parserVersion: 'media-v1',
+          },
+        }))
+      );
     });
   }
   if (!transcriptRecord || !transcriptRecord.rawText.trim()) {
@@ -93,7 +105,12 @@ export async function processMeetingIntelligence(
     throw new UnrecoverableError('NO_TRANSCRIPT_AVAILABLE');
 
   // Idempotently persist segments in transaction
-  await prisma.$transaction(async (tx) => {
+  await processingTransaction(async (tx) => {
+    const claimed = await tx.meeting.updateMany({
+      where: { id: meetingId, processingStatus: 'PARSING' },
+      data: { processingStatus: 'PARSING' },
+    });
+    if (!claimed.count) throw new UnrecoverableError('PROCESSING_CANCELLED');
     await tx.transcriptSegment.deleteMany({ where: { meetingId } });
     if (parseResult.segments.length > 0) {
       await tx.transcriptSegment.createMany({
@@ -135,12 +152,36 @@ export async function processMeetingIntelligence(
   logger.info('Stage 3: Persisting structured intelligence', { meetingId });
   await updateJobProgress(meetingId, 'FINALIZING', 85, 'RUNNING');
 
-  await prisma.$transaction(async (tx) => {
+  // Preserve manual participant edits; merge known transcript speakers and grounded AI identities.
+  const people = new Map<
+    string,
+    { name: string; role: string | null; email: string | null }
+  >();
+  for (const segment of parseResult.segments) {
+    const name = segment.speakerName?.trim();
+    if (name) people.set(name.toLowerCase(), { name, role: null, email: null });
+  }
+  for (const person of aiResult.participants ?? []) {
+    people.set(person.name.toLowerCase().trim(), {
+      name: person.name.trim(),
+      role: person.role ?? null,
+      email: person.email ?? null,
+    });
+  }
+
+  await processingTransaction(async (tx) => {
     const claimed = await tx.meeting.updateMany({
       where: { id: meetingId, processingStatus: 'FINALIZING' },
       data: { processingStatus: 'FINALIZING' },
     });
-    if (!claimed.count) throw new UnrecoverableError('PROCESSING_CANCELLED');
+    if (!claimed.count) {
+      const current = await tx.meeting.findUnique({
+        where: { id: meetingId },
+        select: { processingStatus: true },
+      });
+      if (current?.processingStatus === 'READY') return;
+      throw new UnrecoverableError('PROCESSING_CANCELLED');
+    }
     // 1. Upsert Meeting Summary
     await tx.meetingSummary.upsert({
       where: { meetingId },
@@ -164,58 +205,43 @@ export async function processMeetingIntelligence(
       },
     });
 
-    // 2. Idempotent Action Items creation without duplicating or overwriting manual edits
+    // The meeting row above serializes finalizers. Use set writes, never one round trip per task.
     const existingActionItems = await tx.actionItem.findMany({
       where: { meetingId },
+      select: { title: true },
     });
-
-    const existingTitlesMap = new Map(
-      existingActionItems.map((item) => [
-        item.title.toLowerCase().trim(),
-        item,
-      ]),
+    const titles = new Set(
+      existingActionItems.map((item) => item.title.toLowerCase().trim()),
     );
-
-    for (const extracted of aiResult.actionItems) {
-      const normalizedTitle = extracted.title.toLowerCase().trim();
-      const existing = existingTitlesMap.get(normalizedTitle);
-
-      if (existing) {
-        // If user already touched or completed the task, never overwrite their status
-        if (
-          existing.source === 'MANUAL' ||
-          existing.status === 'DONE' ||
-          existing.status === 'IN_PROGRESS'
-        ) {
-          continue;
-        }
-        // Update description if still TODO
-        await tx.actionItem.update({
-          where: { id: existing.id },
-          data: {
-            description: extracted.description || existing.description,
-            assigneeName: extracted.assigneeName || existing.assigneeName,
-            dueDate: extracted.dueDate
-              ? new Date(extracted.dueDate)
-              : existing.dueDate,
-          },
-        });
-      } else {
-        // Create new action item
-        await tx.actionItem.create({
-          data: {
-            workspaceId: meeting.workspaceId,
-            meetingId,
-            title: extracted.title,
-            description: extracted.description || null,
-            assigneeName: extracted.assigneeName || null,
-            dueDate: extracted.dueDate ? new Date(extracted.dueDate) : null,
-            status: 'TODO',
-            source: 'AI_EXTRACTED',
-          },
-        });
-      }
-    }
+    const freshItems = aiResult.actionItems.filter((item) => {
+      const key = item.title.toLowerCase().trim();
+      if (titles.has(key)) return false;
+      titles.add(key);
+      return true;
+    });
+    if (freshItems.length)
+      await tx.actionItem.createMany({
+        data: freshItems.map((item) => ({
+          workspaceId: meeting.workspaceId,
+          meetingId,
+          title: item.title,
+          description: item.description || null,
+          assigneeName: item.assigneeName || null,
+          dueDate: item.dueDate ? new Date(item.dueDate) : null,
+          status: 'TODO',
+          source: 'AI_EXTRACTED',
+        })),
+      });
+    const existingPeople = await tx.meetingParticipant.findMany({
+      where: { meetingId },
+      select: { name: true },
+    });
+    for (const person of existingPeople)
+      people.delete(person.name.toLowerCase().trim());
+    if (people.size)
+      await tx.meetingParticipant.createMany({
+        data: [...people.values()].map((person) => ({ meetingId, ...person })),
+      });
 
     // 3. Mark Meeting READY
     await tx.meeting.update({
@@ -226,8 +252,9 @@ export async function processMeetingIntelligence(
         ...(parseResult.segments.some((segment) => segment.endMs != null)
           ? {
               durationSeconds: Math.ceil(
-                Math.max(
-                  ...parseResult.segments.map((segment) => segment.endMs ?? 0),
+                parseResult.segments.reduce(
+                  (max, segment) => Math.max(max, segment.endMs ?? 0),
+                  0,
                 ) / 1000,
               ),
             }
@@ -268,7 +295,7 @@ async function updateJobProgress(
   status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED',
 ): Promise<void> {
   const jobId = `meeting-process-${meetingId}`;
-  await prisma.$transaction(async (tx) => {
+  await processingTransaction(async (tx) => {
     const changed = await tx.meeting.updateMany({
       where: {
         id: meetingId,
@@ -319,7 +346,7 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
       logger.info(`[Worker] Processing job ${job.id} for meeting ${meetingId}`);
 
       try {
-        await prisma.$transaction(async (tx) => {
+        await processingTransaction(async (tx) => {
           const claimed = await tx.meeting.updateMany({
             where: {
               id: meetingId,
@@ -329,8 +356,14 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
             },
             data: { processingStatus: 'PARSING' },
           });
-          if (!claimed.count)
+          if (!claimed.count) {
+            const current = await tx.meeting.findUnique({
+              where: { id: meetingId },
+              select: { processingStatus: true },
+            });
+            if (current?.processingStatus === 'READY') return;
             throw new UnrecoverableError('PROCESSING_CANCELLED');
+          }
           await tx.meetingProcessingJob.update({
             where: { jobId: `meeting-process-${meetingId}` },
             data: {
@@ -355,7 +388,7 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
         if (isLastAttempt) {
           await markProcessingFailed(meetingId, processingErrorCode(err));
         } else {
-          await prisma.$transaction(async (tx) => {
+          await processingTransaction(async (tx) => {
             const changed = await tx.meeting.updateMany({
               where: {
                 id: meetingId,

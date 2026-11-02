@@ -1,9 +1,21 @@
-import { createRootRoute, Outlet, useRouterState, useNavigate } from '@tanstack/react-router';
+import { backendConnectionMessage } from '../lib/api-client';
+import {
+  createRootRoute,
+  Outlet,
+  useRouterState,
+  useNavigate,
+} from '@tanstack/react-router';
 import * as React from 'react';
 import { AppShell } from '../components/layout/app-shell';
 import { authAdapter, AuthUser } from '../features/auth/lib/auth-adapter';
 import { Button } from '@meetflow/ui';
-import { AlertCircle, RefreshCw, AudioLines, Loader2, WifiOff } from 'lucide-react';
+import {
+  AlertCircle,
+  RefreshCw,
+  AudioLines,
+  Loader2,
+  WifiOff,
+} from 'lucide-react';
 
 const AUTH_PAGES = ['/login', '/register', '/forgot-password'];
 
@@ -40,10 +52,14 @@ function AuthLoadingScreen({
           <AudioLines className="h-6 w-6 animate-pulse" />
         </div>
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold tracking-tight text-foreground">MeetFlow AI</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            MeetFlow AI
+          </h2>
           <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin text-primary" />
-            <span>{isRetrying ? 'Re-verifying session...' : 'Verifying session...'}</span>
+            <span>
+              {isRetrying ? 'Re-verifying session...' : 'Verifying session...'}
+            </span>
           </p>
         </div>
 
@@ -61,7 +77,9 @@ function AuthLoadingScreen({
                   disabled={isRetrying}
                   className="flex-1 h-8 text-xs font-medium gap-1.5"
                 >
-                  <RefreshCw className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`}
+                  />
                   <span>Retry</span>
                 </Button>
               )}
@@ -97,14 +115,10 @@ function ApiUnavailableScreen({
         </div>
         <div className="space-y-1.5">
           <h2 className="text-base font-semibold tracking-tight text-foreground">
-            MeetFlow Backend Unavailable
+            Unable to connect
           </h2>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Unable to connect to the backend server at{' '}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
-              http://localhost:4000
-            </code>
-            . Session authentication could not be verified.
+            {backendConnectionMessage}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 pt-2">
@@ -113,7 +127,9 @@ function ApiUnavailableScreen({
             disabled={isRetrying}
             className="w-full h-9 text-xs font-semibold gap-2"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`}
+            />
             <span>{isRetrying ? 'Reconnecting...' : 'Retry Connection'}</span>
           </Button>
           <Button
@@ -133,10 +149,14 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() =>
-    authAdapter.getCurrentUser()
+    authAdapter.getCurrentUser(),
   );
-  const [isInitialized, setIsInitialized] = React.useState(() => authAdapter.isInitialized());
-  const [apiAvailable, setApiAvailable] = React.useState(() => authAdapter.isApiAvailable());
+  const [isInitialized, setIsInitialized] = React.useState(() =>
+    authAdapter.isInitialized(),
+  );
+  const [apiAvailable, setApiAvailable] = React.useState(() =>
+    authAdapter.isApiAvailable(),
+  );
   const [isRetrying, setIsRetrying] = React.useState(false);
 
   React.useEffect(() => {
@@ -186,7 +206,14 @@ function RootComponent() {
       navigate({ to: '/' });
       return;
     }
-  }, [isAuthenticated, isAuthPage, isOnboardingPage, isInitialized, currentUser, navigate]);
+  }, [
+    isAuthenticated,
+    isAuthPage,
+    isOnboardingPage,
+    isInitialized,
+    currentUser,
+    navigate,
+  ]);
 
   const handleRetryConnection = async () => {
     setIsRetrying(true);
@@ -201,11 +228,7 @@ function RootComponent() {
     <div className="w-full bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between z-50 transition-colors">
       <div className="flex items-center gap-2">
         <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        <span>
-          <strong>Backend Unavailable:</strong> Unable to connect to the MeetFlow API at{' '}
-          <code className="font-mono text-[11px] bg-amber-500/15 px-1 py-0.5 rounded">http://localhost:4000</code>.
-          Please ensure the backend server is running.
-        </span>
+        <span>{backendConnectionMessage}</span>
       </div>
       <button
         onClick={handleRetryConnection}
@@ -222,7 +245,12 @@ function RootComponent() {
   if (isAuthPage) {
     if (isInitialized && isAuthenticated) {
       // Authenticated user on auth page: show loader while redirect effect navigates to dashboard
-      return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
+      return (
+        <AuthLoadingScreen
+          onRetry={handleRetryConnection}
+          isRetrying={isRetrying}
+        />
+      );
     }
     return (
       <div className="min-h-dvh flex flex-col">
@@ -236,7 +264,12 @@ function RootComponent() {
 
   // 2. Protected Routes: While session bootstrap is in flight, display clean loading screen
   if (!isInitialized) {
-    return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
+    return (
+      <AuthLoadingScreen
+        onRetry={handleRetryConnection}
+        isRetrying={isRetrying}
+      />
+    );
   }
 
   // 3. Protected Routes: If backend is completely unreachable, display retryable error screen (never grant dashboard access)
@@ -251,7 +284,12 @@ function RootComponent() {
 
   // 4. Protected Routes: If unauthenticated, show loader while redirect effect navigates to /login
   if (!isAuthenticated) {
-    return <AuthLoadingScreen onRetry={handleRetryConnection} isRetrying={isRetrying} />;
+    return (
+      <AuthLoadingScreen
+        onRetry={handleRetryConnection}
+        isRetrying={isRetrying}
+      />
+    );
   }
 
   // 5. Onboarding view for authenticated users
