@@ -12,7 +12,6 @@ import {
   TabsContent,
   Button,
   Input,
-  Badge,
   toast,
 } from '@meetflow/ui';
 import {
@@ -26,7 +25,7 @@ import {
   Clock,
   UserPlus,
 } from 'lucide-react';
-import { apiCreateMeeting } from './meetings-api';
+import { apiCreateMeeting, apiCreateMediaMeeting } from './meetings-api';
 
 const ALLOWED_TRANSCRIPT_EXTENSIONS = ['.txt', '.srt', '.vtt'];
 const MAX_TRANSCRIPT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -53,6 +52,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
   const [meetingStatus, setMeetingStatus] = React.useState<'SCHEDULED' | 'COMPLETED'>('SCHEDULED');
 
   // File Upload State
+  const [mediaFile, setMediaFile] = React.useState<File | null>(null);
   const [transcriptFile, setTranscriptFile] = React.useState<File | null>(null);
   const [transcriptContent, setTranscriptContent] = React.useState<string | null>(null);
   const [fileError, setFileError] = React.useState<string | null>(null);
@@ -64,6 +64,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
   const resetForm = React.useCallback(() => {
     setTitle('');
     setDescription('');
+    setMediaFile(null);
     setTranscriptFile(null);
     setTranscriptContent(null);
     setFileError(null);
@@ -141,6 +142,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
       return;
     }
 
+    if (activeTab === 'recording' && !mediaFile) { toast.error('Choose a recording first.'); return; }
     setIsSubmitting(true);
     try {
       const startDateTime = new Date(`${dateStr}T${startTime}:00`);
@@ -165,7 +167,7 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
         sourceType: transcriptContent ? ('TRANSCRIPT_UPLOAD' as const) : ('MANUAL' as const),
         participants,
         transcript:
-          transcriptContent && transcriptFile
+          activeTab === 'transcript' && transcriptContent && transcriptFile
             ? {
                 rawText: transcriptContent,
                 sourceFilename: transcriptFile.name,
@@ -174,11 +176,11 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
             : null,
       };
 
-      const created = await apiCreateMeeting(payload);
+      const created = activeTab === 'recording' && mediaFile ? await apiCreateMediaMeeting(mediaFile, { ...payload, endAt: undefined, transcript: null }) : await apiCreateMeeting(payload);
 
       if (created.status === 'failed') {
         toast.error('Meeting saved, but processing could not be queued. Restore Redis and retry from the meeting.');
-      } else if (transcriptContent) {
+      } else if (transcriptContent || mediaFile) {
         toast.success(`Meeting created! Background AI processing enqueued.`);
       } else {
         toast.success('Scheduled meeting added successfully.');
@@ -412,40 +414,17 @@ export function AddMeetingDialog({ onMeetingCreated }: AddMeetingDialogProps) {
               </form>
             </TabsContent>
 
-            {/* TAB 2: UPLOAD RECORDING (Honest "Coming Soon" Notice) */}
             <TabsContent value="recording" className="space-y-4 pt-3">
-              <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/80 bg-muted/10 p-8 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground mb-3">
-                  <Video className="h-6 w-6" />
-                </div>
-                <h4 className="text-sm font-semibold text-foreground">
-                  Direct Media Ingestion Coming Soon
-                </h4>
-                <p className="text-xs text-muted-foreground max-w-sm mt-1 leading-relaxed">
-                  Audio & video processing via Whisper is planned for a future release. In Phase 06,
-                  please use the <strong>Upload Transcript</strong> tab to ingest meeting conversations
-                  via .txt, .srt, or .vtt for full intelligence extraction.
-                </p>
-                <div className="mt-4">
-                  <Badge variant="outline" className="text-amber-600 border-amber-500/30 text-[11px]">
-                    Phase 06: Active Engine handles TXT / SRT / VTT
-                  </Badge>
-                </div>
-              </div>
-
-              <DialogFooter className="pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveTab('transcript')}
-                >
-                  Switch to Transcript Upload
-                </Button>
-                <Button type="button" size="sm" disabled>
-                  Upload Recording (Unavailable)
-                </Button>
-              </DialogFooter>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1"><label htmlFor="media-title" className="text-xs font-medium">Meeting title</label><Input id="media-title" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={255} /></div>
+                <div className="grid grid-cols-2 gap-3"><div><label htmlFor="media-date" className="text-xs">Date</label><Input id="media-date" type="date" value={dateStr} onChange={(event) => setDateStr(event.target.value)} required /></div><div><label htmlFor="media-time" className="text-xs">Start time</label><Input id="media-time" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></div></div>
+                <div className="rounded-lg border-2 border-dashed p-5 space-y-3"><label htmlFor="media-file" className="text-xs font-medium">Audio or video recording</label><Input id="media-file" type="file" accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,.ogg,.flac" disabled={isSubmitting} onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file && file.size > 512 * 1024 * 1024) { toast.error('Recordings must be 512 MB or smaller.'); event.target.value = ''; setMediaFile(null); return; }
+                  setMediaFile(file ?? null);
+                }} /><p className="text-xs text-muted-foreground">Up to 512 MB. Audio is transcribed automatically, then analyzed for summaries, decisions, and action items. Your recording stays private to this workspace.</p></div>
+                <DialogFooter><Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>Cancel</Button><Button type="submit" disabled={isSubmitting || !mediaFile || !title.trim()}>{isSubmitting ? 'Uploading…' : 'Upload & Process'}</Button></DialogFooter>
+              </form>
             </TabsContent>
           </Tabs>
         </DialogContent>

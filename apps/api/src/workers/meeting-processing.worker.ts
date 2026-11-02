@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { transcriptParserService } from '../services/transcript-parser.service';
 import { meetingAIService } from '../services/meeting-ai.service';
+import { transcribeMedia } from '../services/media.service';
 import {
   MEETING_PROCESSING_QUEUE_NAME,
   MeetingJobPayload,
@@ -44,7 +45,13 @@ export async function processMeetingIntelligence(
     return;
   }
 
-  const transcriptRecord = meeting.transcripts[0];
+  let transcriptRecord = meeting.transcripts[0];
+  if (!transcriptRecord && meeting.mediaStorageKey) {
+    await updateJobProgress(meetingId, 'PARSING', 10, 'RUNNING');
+    const result = await transcribeMedia(meeting.mediaStorageKey, (done, total) => updateJobProgress(meetingId, 'PARSING', 10 + Math.round(18 * done / total), 'RUNNING'));
+    transcriptRecord = await prisma.meetingTranscript.create({ data: { meetingId, rawText: result.rawText, sourceFilename: `${meeting.mediaFilename || 'recording'}.vtt`, sourceFormat: 'vtt', parserVersion: 'media-v1' } });
+    await prisma.meeting.update({ where: { id: meetingId }, data: { durationSeconds: result.durationSeconds, endAt: new Date(meeting.startAt.getTime() + result.durationSeconds * 1000) } });
+  }
   if (!transcriptRecord || !transcriptRecord.rawText.trim()) {
     throw new UnrecoverableError('NO_TRANSCRIPT_AVAILABLE');
   }
@@ -88,6 +95,7 @@ export async function processMeetingIntelligence(
     meetingDate: meeting.startAt,
     timezone: meeting.timezone,
     segments: parseResult.segments,
+    onProgress: (completed, total) => updateJobProgress(meetingId, 'ANALYZING', 45 + Math.round(25 * completed / total), 'RUNNING'),
   });
 
   await updateJobProgress(meetingId, 'ANALYZING', 75, 'RUNNING');

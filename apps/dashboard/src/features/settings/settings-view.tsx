@@ -11,9 +11,10 @@ import {
   Badge,
   toast,
 } from '@meetflow/ui';
-import { Palette, Layers, Radio, Calendar, Video, User, Loader2 } from 'lucide-react';
+import { Palette, Layers, Radio, Video, User, Loader2 } from 'lucide-react';
 import { authAdapter, AuthUser } from '../auth/lib/auth-adapter';
 import { apiClient } from '../../lib/api-client';
+import { CalendarConnection } from '../calendar/calendar-connection';
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -267,32 +268,7 @@ export function SettingsView() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-2 space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-primary">
-                <Calendar className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">Google Calendar & Meet</span>
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Disconnected
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Synchronize scheduled calls and upcoming agenda items automatically.
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => toast.info('Google OAuth integration connects in the subsequent release.')}
-              className="text-xs h-7"
-            >
-              Connect
-            </Button>
-          </div>
+          <CalendarConnection />
 
           <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
             <div className="flex items-center gap-3">
@@ -301,23 +277,23 @@ export function SettingsView() {
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">Recording Bot & Audio Ingestion</span>
+                  <span className="text-xs font-semibold text-foreground">Audio & Video Uploads</span>
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Direct Upload Mode
+                    Available
                   </Badge>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Audio recordings are ingested directly in My Meetings for verified playback.
+                  Upload recordings in My Meetings to generate transcripts, notes and action items.
                 </p>
               </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => toast.info('Direct audio upload is active in My Meetings.')}
+              onClick={() => { window.location.href = '/'; }}
               className="text-xs h-7"
             >
-              Configure
+              Open My Meetings
             </Button>
           </div>
         </CardContent>

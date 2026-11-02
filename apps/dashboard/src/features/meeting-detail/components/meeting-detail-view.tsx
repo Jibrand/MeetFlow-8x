@@ -90,6 +90,13 @@ export function MeetingDetailView({
 
   // Range preview state for clips
   const clipEndRef = React.useRef<number | null>(null);
+  const sharedTimestampApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (sharedTimestampApplied.current || player.duration <= 0) return;
+    sharedTimestampApplied.current = true;
+    const timestamp = Number(new URLSearchParams(window.location.search).get('t'));
+    if (Number.isFinite(timestamp) && timestamp > 0) player.seek(Math.min(timestamp, player.duration));
+  }, [player.duration, player.seek]);
 
   React.useEffect(() => {
     if (

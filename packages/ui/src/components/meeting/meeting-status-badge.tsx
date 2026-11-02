@@ -3,7 +3,7 @@ import { Badge } from '../badge';
 import { Calendar, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-export type MeetingStatusType = 'scheduled' | 'processing' | 'ready' | 'failed';
+export type MeetingStatusType = 'scheduled' | 'processing' | 'ready' | 'failed' | 'cancelled';
 
 export interface MeetingStatusBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   status: MeetingStatusType;
@@ -17,6 +17,8 @@ export function MeetingStatusBadge({
   ...props
 }: MeetingStatusBadgeProps) {
   switch (status) {
+    case 'cancelled':
+      return <Badge variant="outline" className={cn('gap-1 font-medium text-[10px]', className)} {...props}>Cancelled</Badge>;
     case 'scheduled':
       return (
         <Badge

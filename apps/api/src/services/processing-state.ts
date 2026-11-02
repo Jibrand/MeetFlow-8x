@@ -46,6 +46,7 @@ export function processingErrorCode(error: unknown): string {
       : undefined;
   if (message.includes('NO_TRANSCRIPT'))
     return 'NO_TRANSCRIPT_AVAILABLE: Upload a non-empty transcript before retrying.';
+  if (message.startsWith('MEDIA_')) return message;
   if (message.includes('OPENAI_API_KEY'))
     return 'AI_NOT_CONFIGURED: Configure OPENAI_API_KEY on the worker, then retry.';
   if (status === 401 || status === 403)

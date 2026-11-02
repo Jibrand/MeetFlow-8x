@@ -70,7 +70,7 @@ export function MeetingDetailScaffold({
   }
 
   // 2. Ready Meeting -> Full Meeting Intelligence Workspace
-  if (meeting.status === 'ready') {
+  if (meeting.status === 'ready' || (meeting.status === 'cancelled' && meeting.summary)) {
     return (
       <MeetingDetailView
         meeting={meeting}
@@ -179,6 +179,7 @@ export function MeetingDetailScaffold({
       </div>
 
       {/* Case A: Failed Meeting */}
+      {meeting.status === 'cancelled' && <EmptyState title="Meeting cancelled" description="This event was cancelled in the connected calendar." />}
       {meeting.status === 'failed' && (
         <ErrorState
           title="Meeting Recording Failed"

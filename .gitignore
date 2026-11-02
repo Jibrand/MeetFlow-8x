@@ -3,6 +3,7 @@ node_modules/
 .pnpm-store/
 
 # Build artifacts
+/.local-media/
 dist/
 build/
 .turbo/

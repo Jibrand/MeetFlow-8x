@@ -6,6 +6,8 @@ import { workspacesRouter } from '../modules/workspaces/workspaces.routes';
 import { onboardingRouter } from '../modules/onboarding/onboarding.routes';
 import { meetingsRouter } from '../modules/meetings/meetings.routes';
 import { actionItemsRouter } from '../modules/action-items/action-items.routes';
+import { askRouter } from '../modules/ask/ask.routes';
+import { calendarRouter } from '../modules/calendar/calendar.routes';
 
 export const apiRouter = Router();
 
@@ -37,6 +39,8 @@ v1Router.use('/workspaces', workspacesRouter);
 v1Router.use('/onboarding', onboardingRouter);
 v1Router.use('/meetings', meetingsRouter);
 v1Router.use('/action-items', actionItemsRouter);
+v1Router.use('/ask', askRouter);
+v1Router.use('/integrations/calendar', calendarRouter);
 
 // Primary versioned route: /api/v1/*
 apiRouter.use('/v1', v1Router);

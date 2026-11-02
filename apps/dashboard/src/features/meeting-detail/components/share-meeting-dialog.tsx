@@ -72,7 +72,7 @@ export function ShareMeetingDialog({
               <span>Workspace Member Access</span>
             </div>
             <p className="text-muted-foreground leading-relaxed">
-              Anyone with access to your MeetFlow workspace can view this recording, transcript, and AI summary. Public tokenized links without authentication will be enabled in Phase 07.
+              Workspace members can open this link after signing in to view the recording, transcript, and AI summary.
             </p>
           </div>
 

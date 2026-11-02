@@ -80,6 +80,7 @@ export function MeetingFilters({
             <option value="processing">Processing</option>
             <option value="scheduled">Scheduled</option>
             <option value="failed">Failed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
 
           {/* Platform Filter */}

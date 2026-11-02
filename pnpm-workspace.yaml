@@ -7,3 +7,5 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   prisma: true
+  ffmpeg-static: true
+  msgpackr-extract: false

@@ -11,7 +11,8 @@ import {
   Menu,
 } from 'lucide-react';
 import { Button, Badge, toast } from '@meetflow/ui';
-import { queryDemoAssistant, AskCitation } from './demo-ask-adapter';
+import { queryAssistant, AskCitation } from './ask-api';
+import { authAdapter } from '../auth/lib/auth-adapter';
 
 interface ChatMessage {
   id: string;
@@ -33,9 +34,10 @@ export interface AskMeetFlowViewProps {
 }
 
 export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
+  const historyKey = `meetflow-chat-live:${authAdapter.getUser()?.id}:${authAdapter.getUser()?.workspaceId}`;
   const [messages, setMessages] = React.useState<ChatMessage[]>(() => {
     try {
-      const saved = sessionStorage.getItem('meetflow-chat-messages');
+      const saved = sessionStorage.getItem(historyKey);
       if (saved) return JSON.parse(saved);
     } catch {
       // ignore
@@ -51,11 +53,11 @@ export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
   // Persist session messages
   React.useEffect(() => {
     try {
-      sessionStorage.setItem('meetflow-chat-messages', JSON.stringify(messages));
+      sessionStorage.setItem(historyKey, JSON.stringify(messages));
     } catch {
       // ignore
     }
-  }, [messages]);
+  }, [messages, historyKey]);
 
   // Auto scroll to latest message
   React.useEffect(() => {
@@ -80,7 +82,7 @@ export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
     setLoading(true);
 
     try {
-      const response = await queryDemoAssistant(textToSend);
+      const response = await queryAssistant(textToSend, undefined, messages.slice(-10).map((message) => ({ role: message.sender, content: message.text })));
       const botMessage: ChatMessage = {
         id: `bot-${Date.now()}`,
         sender: 'assistant',
@@ -89,8 +91,8 @@ export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, botMessage]);
-    } catch {
-      toast.error('Failed to query meeting assistant');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to query meeting assistant');
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
 
   const handleClear = () => {
     setMessages([]);
-    sessionStorage.removeItem('meetflow-chat-messages');
+    sessionStorage.removeItem(historyKey);
     toast.success('Conversation reset');
   };
 
@@ -132,7 +134,7 @@ export function AskMeetFlowView({ onOpenMobileNav }: AskMeetFlowViewProps) {
           </span>
           <span className="text-xs font-semibold text-foreground">MeetFlow Intelligence</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-            Demo Mode
+            Workspace AI
           </Badge>
         </div>
 

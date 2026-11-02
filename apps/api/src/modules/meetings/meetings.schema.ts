@@ -1,9 +1,13 @@
 import { z } from 'zod';
 
 export const MeetingParticipantInputSchema = z.object({
-  name: z.string().min(1, 'Participant name is required'),
+  name: z.string().trim().min(1, 'Participant name is required').max(100),
   email: z.string().email('Invalid participant email').optional().nullable(),
   role: z.string().optional().nullable(),
+});
+const ParticipantsSchema = z.array(MeetingParticipantInputSchema).max(200).superRefine((participants, context) => {
+  const names = participants.map((participant) => participant.name.toLocaleLowerCase());
+  if (new Set(names).size !== names.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Participant names must be unique.' });
 });
 
 export const TranscriptInputSchema = z.object({
@@ -22,12 +26,13 @@ export const CreateMeetingSchema = z.object({
   sourceType: z
     .enum(['MANUAL', 'TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD', 'CALENDAR'])
     .default('MANUAL'),
-  participants: z.array(MeetingParticipantInputSchema).optional().default([]),
+  participants: ParticipantsSchema.optional().default([]),
   transcript: TranscriptInputSchema.optional().nullable(),
 });
 export type CreateMeetingInput = z.infer<typeof CreateMeetingSchema>;
 
 export const UpdateMeetingSchema = z.object({
+  participants: ParticipantsSchema.optional(),
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).optional().nullable(),
   startAt: z.string().datetime().optional(),

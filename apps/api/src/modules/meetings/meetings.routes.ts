@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { meetingsController } from './meetings.controller';
 import { requireAuth } from '../../middleware/auth';
 import { requireWorkspace } from '../../middleware/workspace';
+import { mediaRouter } from './media.routes';
 
 export const meetingsRouter = Router();
 
 // All meeting endpoints require authenticated user and active workspace
 meetingsRouter.use(requireAuth, requireWorkspace);
+meetingsRouter.use(mediaRouter);
 
 meetingsRouter.post('/', (req, res, next) => meetingsController.createMeeting(req, res, next));
 meetingsRouter.get('/', (req, res, next) => meetingsController.listMeetings(req, res, next));

@@ -1,6 +1,6 @@
 export type MeetingPlatform = 'zoom' | 'meet' | 'teams' | 'upload';
 
-export type MeetingStatus = 'ready' | 'processing' | 'scheduled' | 'failed';
+export type MeetingStatus = 'ready' | 'processing' | 'scheduled' | 'failed' | 'cancelled';
 
 export interface Participant {
   id: string;

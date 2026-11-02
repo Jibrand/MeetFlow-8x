@@ -14,7 +14,7 @@ export function redactDiagnostics(text: string): string {
     .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]');
   for (const [key, value] of Object.entries(process.env)) {
     if (
-      /SECRET|PASSWORD|TOKEN|API_KEY|DATABASE_URL|DIRECT_URL|REDIS_URL/.test(
+      /SECRET|PASSWORD|TOKEN|API_KEY|ENCRYPTION_KEY|DATABASE_URL|DIRECT_URL|REDIS_URL/.test(
         key,
       ) &&
       value &&

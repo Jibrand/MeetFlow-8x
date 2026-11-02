@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { MeetingItem } from '../../../types/meeting';
-import { Input, Button } from '@meetflow/ui';
+import { Input, Button, toast } from '@meetflow/ui';
+import { queryAssistant } from '../../ask/ask-api';
 import { Sparkles, Send, Bot, User, Play, Info } from 'lucide-react';
 import { formatSecondsToTime } from '../lib/export-utils';
 
@@ -13,7 +14,7 @@ interface Message {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
-  citations?: { quote: string; seconds: number; speaker: string }[];
+  citations?: { quote: string; seconds?: number; speaker?: string }[];
 }
 
 export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
@@ -27,65 +28,21 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
   ]);
 
   const [isThinking, setIsThinking] = React.useState(false);
-  const evidenceFor = (quote: string): NonNullable<Message['citations']> => {
-    const turn = meeting.transcriptTurns?.find((item) => item.text.includes(quote));
-    return turn ? [{ quote, seconds: turn.startTime, speaker: turn.speakerName }] : [];
-  };
-
   const samplePrompts = [
     'What were the key decisions made?',
     'What did each participant commit to?',
     'What are the unresolved blockers or risks?',
   ];
 
-  const handleAsk = (questionText: string) => {
-    if (!questionText.trim()) return;
-
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      sender: 'user',
-      text: questionText,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setQuery('');
-    setIsThinking(true);
-
-    setTimeout(() => {
-      let reply = '';
-      let citations: Message['citations'] = [];
-
-      const q = questionText.toLowerCase();
-      if (q.includes('decision')) {
-        const decisions = meeting.summary?.decisions || [];
-        reply =
-          decisions.length > 0
-            ? `Based on the discussion, here are the recorded decisions:\n${decisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`
-            : 'No formal decisions were flagged for this call.';
-        citations = decisions.slice(0, 2).flatMap(evidenceFor);
-      } else if (q.includes('commit') || q.includes('action') || q.includes('next step')) {
-        const actions = meeting.actionItems || [];
-        reply =
-          actions.length > 0
-            ? `Here are the commitments identified from the call:\n${actions.map((a, i) => `${i + 1}. ${a.title} (${a.assigneeName || 'Unassigned'})`).join('\n')}`
-            : 'No commitments or tasks were recorded.';
-        citations = actions.slice(0, 2).flatMap((action) => evidenceFor(action.title));
-      } else {
-        reply = `According to the transcript of "${meeting.title}", the participants focused on: ${meeting.summary?.executiveSummary || meeting.previewSummary}`;
-        citations = [];
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `bot-${Date.now()}`,
-          sender: 'assistant',
-          text: reply,
-          citations,
-        },
-      ]);
-      setIsThinking(false);
-    }, 400);
+  const handleAsk = async (questionText: string) => {
+    if (!questionText.trim() || isThinking) return;
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), sender: 'user', text: questionText }]);
+    setQuery(''); setIsThinking(true);
+    try {
+      const result = await queryAssistant(questionText, meeting.id, messages.filter((message) => message.id !== 'msg-welcome').slice(-10).map((message) => ({ role: message.sender, content: message.text })));
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), sender: 'assistant', text: result.answer, citations: result.citations.map((citation) => ({ quote: citation.quote ?? '', seconds: citation.timestampSeconds, speaker: citation.speaker })) }]);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to answer this question.'); }
+    finally { setIsThinking(false); }
   };
 
   return (
@@ -94,7 +51,7 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
       <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3.5 py-2 text-[11px] text-muted-foreground">
         <Info className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
-          Answers use this meeting's saved summary and action items.
+          Answers are generated from this meeting’s saved transcript, summary and action items.
         </span>
       </div>
 
@@ -132,13 +89,13 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
                     {msg.citations.map((c, idx) => (
                       <div
                         key={idx}
-                        onClick={() => onSeek(c.seconds)}
+                        onClick={() => { if (c.seconds !== undefined) onSeek(c.seconds); }}
                         className="flex items-center justify-between gap-2 rounded bg-card/70 px-2 py-1 text-[11px] hover:bg-card cursor-pointer border border-border/50 text-foreground transition-colors"
                       >
                         <span className="truncate italic">"{c.quote}"</span>
                         <div className="flex items-center gap-1 font-mono text-[10px] text-primary shrink-0 font-medium">
                           <Play className="h-2 w-2 fill-primary" />
-                          <span>{formatSecondsToTime(c.seconds)}</span>
+                          <span>{c.seconds === undefined ? 'Source' : formatSecondsToTime(c.seconds)}</span>
                         </div>
                       </div>
                     ))}

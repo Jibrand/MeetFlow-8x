@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { getOpenAI } from '../lib/openai-client';
 import { z } from 'zod';
 import { logger } from '../lib/logger';
 import { ParsedSegment } from './transcript-parser.service';
@@ -38,25 +38,52 @@ export type MeetingIntelligenceResult = z.infer<
 >;
 
 export class MeetingAIService {
-  private client: OpenAI | null = null;
   private readonly defaultModel: string;
 
   constructor() {
     this.defaultModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   }
 
-  private getClient(): OpenAI {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        'OPENAI_API_KEY is not configured in the environment. Please set OPENAI_API_KEY in your .env configuration.',
-      );
+  public async analyzeMeeting(params: {
+    meetingTitle: string; meetingDate: Date; timezone?: string; segments: ParsedSegment[];
+    onProgress?: (completed: number, total: number) => Promise<void>;
+  }): Promise<MeetingIntelligenceResult> {
+    const chunks: ParsedSegment[][] = [[]];
+    let size = 0;
+    for (const segment of params.segments) {
+      // Split oversized turns too: no character is silently dropped.
+      for (let offset = 0; offset < segment.text.length; offset += 12_000) {
+        const text = segment.text.slice(offset, offset + 12_000);
+        if (size + text.length > 24_000 && chunks[chunks.length - 1].length) { chunks.push([]); size = 0; }
+        chunks[chunks.length - 1].push({ ...segment, text });
+        size += text.length;
+      }
     }
-    if (!this.client) {
-      // BullMQ owns retries. Bound each provider request instead of nesting SDK retries.
-      this.client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 0 });
+    const results: MeetingIntelligenceResult[] = [];
+    for (const chunk of chunks) {
+      results.push(await this.analyzeChunk({ ...params, segments: chunk }));
+      await params.onProgress?.(results.length, chunks.length + 1);
     }
-    return this.client;
+    if (results.length === 1) return results[0];
+    let overviews = results.map((result) => result.overview);
+    while (overviews.length > 1) {
+      const reduced: string[] = [];
+      for (let i = 0; i < overviews.length; i += 8) {
+        const summary = await this.analyzeChunk({ ...params, segments: overviews.slice(i, i + 8).map((text, sequence) => ({ sequence, text, speakerName: null, startMs: null, endMs: null })) });
+        reduced.push(summary.overview);
+        await params.onProgress?.(chunks.length, chunks.length + 1);
+      }
+      overviews = reduced;
+    }
+    const unique = <T>(items: T[], key: (item: T) => string): T[] => [...new Map(items.map((item) => [key(item).toLowerCase().trim(), item])).values()];
+    return {
+      overview: overviews[0], model: results[0].model,
+      keyPoints: unique(results.flatMap((r) => r.keyPoints), (value) => value),
+      decisions: unique(results.flatMap((r) => r.decisions), (value) => value),
+      topics: unique(results.flatMap((r) => r.topics), (value) => value),
+      highlights: unique(results.flatMap((r) => r.highlights), (value) => value.quote),
+      actionItems: unique(results.flatMap((r) => r.actionItems), (value) => `${value.title}:${value.assigneeName ?? ''}`),
+    };
   }
 
   /**
@@ -76,7 +103,7 @@ export class MeetingAIService {
   /**
    * Run structured meeting intelligence extraction
    */
-  public async analyzeMeeting(params: {
+  private async analyzeChunk(params: {
     meetingTitle: string;
     meetingDate: Date;
     timezone?: string;
@@ -97,7 +124,7 @@ export class MeetingAIService {
     }
 
     const transcriptText = this.formatTranscript(segments);
-    const client = this.getClient();
+    const client = getOpenAI();
     const model = process.env.OPENAI_MODEL || this.defaultModel;
 
     const systemPrompt = `You are the MeetFlow AI Meeting Intelligence Engine.
@@ -118,7 +145,7 @@ Timezone: ${timezone}
 
 TRANSCRIPT:
 """
-${transcriptText.slice(0, 80000)}
+${transcriptText}
 """
 
 Extract structured intelligence in JSON matching this schema:

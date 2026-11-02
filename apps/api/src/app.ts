@@ -22,7 +22,7 @@ export function createApp(): Express {
     cors({
       origin: (origin, callback) => {
         // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-        if (!origin || config.corsOrigin.includes(origin) || config.corsOrigin.includes('*')) {
+        if (!origin || config.corsOrigin.includes(origin)) {
           callback(null, true);
         } else {
           callback(null, false);
@@ -35,7 +35,7 @@ export function createApp(): Express {
   );
 
   // Body parsers with sensible size limits
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '12mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Attach unique Request ID
@@ -51,7 +51,7 @@ export function createApp(): Express {
         message: 'HTTP Request',
         requestId: req.id,
         method: req.method,
-        path: req.originalUrl,
+        path: req.path,
         statusCode: res.statusCode,
         durationMs: duration,
       });

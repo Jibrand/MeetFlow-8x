@@ -1,4 +1,4 @@
-import { apiClient, ApiError } from '../../lib/api-client';
+import { apiClient, ApiError, API_BASE_URL } from '../../lib/api-client';
 import {
   MeetingItem,
   ActionItemData,
@@ -127,7 +127,9 @@ export interface OverviewStatsResponse {
 export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
   // Map processing status to UI status
   let status: MeetingStatus = 'scheduled';
-  if (m.processingStatus === 'READY') {
+  if (m.meetingStatus === 'CANCELLED') {
+    status = 'cancelled';
+  } else if (m.processingStatus === 'READY') {
     status = 'ready';
   } else if (m.processingStatus === 'FAILED') {
     status = 'failed';
@@ -186,7 +188,7 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     startDate: m.startAt,
     durationSeconds: m.durationSeconds ?? 0,
     status,
-    platform: m.sourceType === 'TRANSCRIPT_UPLOAD' ? 'upload' : 'meet',
+    platform: ['TRANSCRIPT_UPLOAD', 'AUDIO_UPLOAD', 'VIDEO_UPLOAD'].includes(m.sourceType) ? 'upload' : 'meet',
     organizer: {
       id: m.participants?.[0]?.id || '',
       name: m.participants?.[0]?.name || 'Organizer unavailable',
@@ -205,7 +207,7 @@ export function mapBackendMeetingToItem(m: BackendMeeting): MeetingItem {
     highlightCount: highlights.length,
     hasRecording,
     hasTranscript,
-    recordingUrl: m.recordingUrl || undefined,
+    recordingUrl: m.recordingUrl?.startsWith('/') ? `${API_BASE_URL.replace(/\/api(?:\/v1)?\/?$/, '')}${m.recordingUrl}` : m.recordingUrl || undefined,
     summary: m.summary
       ? {
           executiveSummary: m.summary.overview,
@@ -316,6 +318,14 @@ export async function apiFetchProcessingStatus(
   return apiClient<ProcessingStatusResponse>(`/meetings/${id}/processing`);
 }
 
+export async function apiCreateMediaMeeting(file: File, metadata: Parameters<typeof apiCreateMeeting>[0]): Promise<MeetingItem> {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('metadata', JSON.stringify(metadata));
+  const result = await apiClient<BackendMeeting>('/meetings/media', { method: 'POST', body, timeoutMs: 120_000 });
+  return mapBackendMeetingToItem(result);
+}
+
 export async function apiReprocessMeeting(id: string): Promise<void> {
   const result = await apiClient<{ queueStatus: string }>(
     `/meetings/${id}/reprocess`,
@@ -329,6 +339,16 @@ export async function apiReprocessMeeting(id: string): Promise<void> {
       message: 'Processing could not be queued. Restore Redis and retry.',
     });
   }
+}
+
+export async function apiUpdateMeeting(id: string, data: {
+  title?: string; description?: string | null; startAt?: string; endAt?: string | null; timezone?: string;
+  participants?: Array<{ name: string; email?: string | null; role?: string | null }>;
+}): Promise<BackendMeeting> {
+  return apiClient(`/meetings/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+export async function apiDeleteMeeting(id: string): Promise<void> {
+  await apiClient(`/meetings/${id}`, { method: 'DELETE' });
 }
 
 export async function apiFetchActionItems(params?: {

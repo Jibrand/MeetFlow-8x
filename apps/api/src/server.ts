@@ -4,14 +4,14 @@ import { config } from './config';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { startMeetingProcessingWorker } from './workers/meeting-processing.worker';
+import { syncConnectedCalendars } from './modules/calendar/calendar.service';
 import {
   closeMeetingProcessingQueue,
   reconcileMeetingProcessing,
 } from './queues/meeting-processing.queue';
 
 // Development must have a consumer without requiring a second, easily missed command.
-const worker =
-  config.env === 'development' ? startMeetingProcessingWorker() : null;
+let worker: ReturnType<typeof startMeetingProcessingWorker> = null;
 let reconciling = false;
 async function reconcile() {
   if (reconciling) return;
@@ -31,8 +31,11 @@ reconciliationTimer.unref();
 void reconcile();
 
 const app = createApp();
+const calendarTimer = setInterval(() => { void syncConnectedCalendars().catch((error: unknown) => logger.error('Calendar synchronization could not run', { error })); }, 60_000);
+calendarTimer.unref();
 
 const server = app.listen(config.port, () => {
+  if (config.env === 'development') worker = startMeetingProcessingWorker();
   logger.info({
     message: `MeetFlow API server listening on http://localhost:${config.port}`,
     port: config.port,
@@ -48,6 +51,7 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 });
 
 async function gracefulShutdown(signal: string) {
+  clearInterval(calendarTimer);
   clearInterval(reconciliationTimer);
   logger.info({ message: `${signal} received, shutting down gracefully` });
   server.close(async () => {

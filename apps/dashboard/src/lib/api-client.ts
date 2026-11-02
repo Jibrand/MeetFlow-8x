@@ -121,19 +121,19 @@ export async function performTokenRefresh(): Promise<boolean> {
 
 export async function apiClient<T>(
   endpoint: string,
-  options: RequestInit & { _isRetry?: boolean } = {}
+  options: RequestInit & { _isRetry?: boolean; timeoutMs?: number } = {}
 ): Promise<T> {
   const url = endpoint.startsWith('http')
     ? endpoint
     : `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const defaultHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     Accept: 'application/json',
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 10000);
 
   const config: RequestInit = {
     ...options,

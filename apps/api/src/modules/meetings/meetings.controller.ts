@@ -8,6 +8,7 @@ import {
 } from './meetings.schema';
 import { enqueueMeetingProcessing } from '../../queues/meeting-processing.queue';
 import { transcriptParserService } from '../../services/transcript-parser.service';
+import { removeMedia } from '../../services/media.service';
 
 export class MeetingsController {
   /**
@@ -165,7 +166,7 @@ export class MeetingsController {
           openActionItems: openItems,
           completedActionItems: doneItems,
           overdueActionItems: overdueItems,
-          recentMeetings: recentMeetings.map((meeting) => ({ ...meeting, actionItemCount: meeting._count.actionItems })),
+          recentMeetings: recentMeetings.map(({ mediaStorageKey: _key, ...meeting }) => ({ ...meeting, actionItemCount: meeting._count.actionItems })),
           attentionItems,
         },
         meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
@@ -324,7 +325,7 @@ export class MeetingsController {
 
       res.status(200).json({
         success: true,
-        data: meeting,
+        data: { ...meeting, mediaStorageKey: undefined },
         meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
       });
     } catch (err) {
@@ -359,6 +360,7 @@ export class MeetingsController {
         where: { id },
         data: {
           ...(input.title ? { title: input.title } : {}),
+          ...(input.participants !== undefined ? { participants: { deleteMany: {}, create: input.participants.map((participant) => ({ name: participant.name, email: participant.email || null, role: participant.role || null })) } } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.startAt ? { startAt: new Date(input.startAt) } : {}),
           ...(input.endAt !== undefined ? { endAt: input.endAt ? new Date(input.endAt) : null } : {}),
@@ -372,7 +374,7 @@ export class MeetingsController {
 
       res.status(200).json({
         success: true,
-        data: updated,
+        data: { ...updated, mediaStorageKey: undefined },
         meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
       });
     } catch (err) {
@@ -405,6 +407,7 @@ export class MeetingsController {
       await prisma.meeting.delete({
         where: { id },
       });
+      if (existing.mediaStorageKey) await removeMedia(existing.mediaStorageKey);
 
       res.status(200).json({
         success: true,
@@ -624,7 +627,7 @@ export class MeetingsController {
         return;
       }
 
-      if (meeting.transcripts.length === 0) {
+      if (meeting.transcripts.length === 0 && !meeting.mediaStorageKey) {
         res.status(400).json({
           success: false,
           error: {

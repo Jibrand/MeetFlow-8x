@@ -96,6 +96,7 @@ model User {
   onboarding          UserOnboarding?
   sessions            AuthSession[]
   passwordResetTokens PasswordResetToken[]
+  calendarConnections CalendarConnection[]
 
   @@map("users")
 }
@@ -111,6 +112,7 @@ model Workspace {
   members          WorkspaceMember[]
   meetings         Meeting[]
   actionItems      ActionItem[]
+  calendarConnections CalendarConnection[]
 
   @@map("workspaces")
 }
@@ -188,6 +190,12 @@ model Meeting {
   durationSeconds  Int                  @default(0)
   recordingUrl     String?
   thumbnailUrl     String?
+  mediaStorageKey  String?
+  mediaFilename    String?
+  mediaMimeType    String?
+  calendarConnectionId String?
+  externalEventId String?
+  calendarConnection CalendarConnection? @relation(fields: [calendarConnectionId], references: [id], onDelete: SetNull)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -201,10 +209,32 @@ model Meeting {
   shareLinks       ShareLink[]
 
   @@index([workspaceId])
+  @@unique([calendarConnectionId, externalEventId])
   @@index([startAt])
   @@index([meetingStatus])
   @@index([processingStatus])
   @@map("meetings")
+}
+
+model CalendarConnection {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider String @default("google")
+  calendarId String @default("primary")
+  encryptedRefreshToken String
+  encryptedAccessToken String?
+  expiresAt DateTime?
+  syncToken String?
+  lastSyncedAt DateTime?
+  syncError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meetings Meeting[]
+  @@unique([userId, workspaceId, provider])
+  @@map("calendar_connections")
 }
 
 model MeetingParticipant {
