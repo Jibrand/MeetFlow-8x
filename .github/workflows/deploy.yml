@@ -1,0 +1,98 @@
+name: Deploy MeetFlow
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: meetflow-production
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ${{ steps.names.outputs.api }}
+      frontend: ${{ steps.names.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: names
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "api=ghcr.io/${repo}-api:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${repo}-frontend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.api }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/dashboard/Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.frontend }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure SSH and production environment
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
+          API_IMAGE: ${{ needs.build.outputs.api }}
+          FRONTEND_IMAGE: ${{ needs.build.outputs.frontend }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$PRODUCTION_ENV"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/meetflow
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$PRODUCTION_ENV" > .env.production
+          printf 'API_IMAGE=%s\nFRONTEND_IMAGE=%s\n' "$API_IMAGE" "$FRONTEND_IMAGE" > images.env
+      - name: Pull, migrate, and start on EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EC2_HOST" =~ ^[a-zA-Z0-9.-]+$ ]] && [[ "$EC2_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          ssh_opts=(-i ~/.ssh/meetflow -o BatchMode=yes -o StrictHostKeyChecking=yes)
+          target="$EC2_USER@$EC2_HOST"
+          # Registry token is short-lived; never include it in source, process arguments, or logs.
+          trap 'ssh "${ssh_opts[@]}" "$target" "docker logout ghcr.io >/dev/null 2>&1" || true; rm -f .env.production ~/.ssh/meetflow' EXIT
+          printf '%s' "$GHCR_TOKEN" | ssh "${ssh_opts[@]}" "$target" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          tar -czf - docker-compose.prod.yml deploy .env.production images.env | ssh "${ssh_opts[@]}" "$target" 'umask 077; cd /opt/meetflow; tar -xzf -; chmod 600 .env.production'
+          ssh "${ssh_opts[@]}" "$target" 'bash /opt/meetflow/deploy/deploy.sh'

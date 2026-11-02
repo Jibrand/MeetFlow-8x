@@ -6,6 +6,7 @@ const envSchema = z.object({
     .enum(['development', 'production', 'test'])
     .default('development'),
   PORT: z.coerce.number().default(4000),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(1).default(0),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DATABASE_URL: z.string().optional(),
   DIRECT_URL: z.string().optional(),
@@ -65,6 +66,7 @@ const resolvedCorsOrigins = Array.from(
 export const config = {
   env: parsedEnv.data.NODE_ENV,
   port: parsedEnv.data.PORT,
+  trustProxyHops: parsedEnv.data.TRUST_PROXY_HOPS,
   corsOrigin: resolvedCorsOrigins,
   databaseUrl: parsedEnv.data.DATABASE_URL,
   directUrl: parsedEnv.data.DIRECT_URL,

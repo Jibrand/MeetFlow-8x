@@ -12,6 +12,8 @@ import { logger } from './lib/logger';
 
 export function createApp(): Express {
   const app = express();
+  // Production Compose exposes only Caddy, so exactly one forwarding hop is trusted.
+  app.set('trust proxy', config.trustProxyHops);
 
   // Security headers
   app.use(helmet());

@@ -11,6 +11,8 @@ build/
 # Environment files
 .env
 .env.local
+.env.production
+images.env
 *.env
 !.env.example
 

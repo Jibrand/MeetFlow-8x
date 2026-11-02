@@ -1,5 +1,10 @@
 # MeetFlow AI — API Reference & Architectural Guide
 
+Production deployment serves the existing root API at `/api` and versioned API
+at `/api/v1` on the frontend's HTTPS origin. Caddy forwards paths unchanged.
+`TRUST_PROXY_HOPS=1` trusts the single Caddy hop for secure cookies and client IPs;
+direct/local operation defaults to zero. See `DEPLOYMENT.md` for configuration.
+
 ## 1. Single-admin execution architecture
 
 MeetFlow has one persisted admin and workspace. Login, initial admin registration, session refresh and Logout are enabled. Registration closes once the admin password is configured; only the instance admin can sign in. Historical identity/workspace rows remain as provenance and do not grant access. No team registration, invitations or role-management features are exposed.

@@ -1,0 +1,136 @@
+name: meetflow
+
+x-app: &app
+  image: ${API_IMAGE:?Set the immutable API_IMAGE from CI}
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  environment: &app-env
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    PORT: 4000
+    TRUST_PROXY_HOPS: 1
+    DATABASE_URL: postgresql://${POSTGRES_USER:-meetflow}:${POSTGRES_PASSWORD:?Set a hex POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetflow}?schema=public
+    DIRECT_URL: postgresql://${POSTGRES_USER:-meetflow}:${POSTGRES_PASSWORD:?Set a hex POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetflow}?schema=public
+    REDIS_URL: redis://redis:6379/0
+    JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a private JWT_ACCESS_SECRET}
+    ACCESS_TOKEN_EXPIRES_IN: ${ACCESS_TOKEN_EXPIRES_IN:-15m}
+    REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-7}
+    COOKIE_SAME_SITE: lax
+    CORS_ORIGIN: https://${APP_HOST:?Set APP_HOST}
+    FRONTEND_URL: https://${APP_HOST:?Set APP_HOST}
+    MEDIA_STORAGE_DIR: /app/media
+    FFMPEG_PATH: /usr/bin/ffmpeg
+    OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    OPENAI_TRANSCRIPTION_MODEL: ${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    GOOGLE_REDIRECT_URI: https://${APP_HOST}/api/v1/integrations/calendar/callback
+    CALENDAR_ENCRYPTION_KEY: ${CALENDAR_ENCRYPTION_KEY:-}
+  volumes:
+    - uploads:/app/media
+  networks: [backend]
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  logging: &logging
+    driver: json-file
+    options: { max-size: 10m, max-file: '3' }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-meetflow}
+      POSTGRES_USER: ${POSTGRES_USER:-meetflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, 'yes', --maxmemory-policy, noeviction]
+    volumes: [redis-data:/data]
+    networks: [backend]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  migrate:
+    <<: *app
+    restart: 'no'
+    profiles: [tools]
+    command: [node, node_modules/prisma/build/index.js, migrate, deploy, --schema, prisma/schema.prisma]
+
+  api:
+    <<: *app
+    command: [node, dist/server.js]
+    stop_grace_period: 3m
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    <<: *app
+    command: [node, dist/workers/meeting-processing.worker.js]
+    stop_grace_period: 3m
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set the immutable FRONTEND_IMAGE from CI}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [backend]
+    logging: *logging
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_HOST: ${APP_HOST:?Set APP_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [backend, edge]
+    depends_on:
+      api: { condition: service_healthy }
+      frontend: { condition: service_started }
+    logging: *logging
+
+networks:
+  # No published database/cache/API ports. Outbound internet is needed for OpenAI/Google.
+  backend:
+  edge:
+
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:
+  caddy-data:
+  caddy-config:
