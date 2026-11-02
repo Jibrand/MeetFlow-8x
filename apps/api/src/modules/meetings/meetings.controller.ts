@@ -77,6 +77,7 @@ export class MeetingsController {
         success: true,
         data: {
           ...meeting,
+          ...(queueStatus === 'REDIS_UNAVAILABLE' ? { processingStatus: 'FAILED' } : {}),
           queueStatus,
         },
         meta: {
@@ -164,7 +165,7 @@ export class MeetingsController {
           openActionItems: openItems,
           completedActionItems: doneItems,
           overdueActionItems: overdueItems,
-          recentMeetings,
+          recentMeetings: recentMeetings.map((meeting) => ({ ...meeting, actionItemCount: meeting._count.actionItems })),
           attentionItems,
         },
         meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },
@@ -557,6 +558,11 @@ export class MeetingsController {
       }
 
       const latestJob = meeting.processingJobs[0];
+      // Prisma may load the parent and relation in separate queries while a stage commits.
+      // The job row carries the coherent stage/progress/terminal result for this response.
+      const processingStatus = latestJob
+        ? latestJob.status === 'COMPLETED' ? 'READY' : latestJob.status === 'FAILED' ? 'FAILED' : latestJob.stage
+        : meeting.processingStatus;
 
       // Estimated progress map by stage
       const stageProgressMap: Record<string, number> = {
@@ -569,14 +575,14 @@ export class MeetingsController {
         FAILED: 0,
       };
 
-      const stage = latestJob?.stage || meeting.processingStatus;
-      const progress = latestJob?.progress ?? (stageProgressMap[meeting.processingStatus] || 0);
+      const stage = latestJob?.stage || processingStatus;
+      const progress = latestJob?.progress ?? (stageProgressMap[processingStatus] || 0);
 
       res.status(200).json({
         success: true,
         data: {
           meetingId: id,
-          processingStatus: meeting.processingStatus,
+          processingStatus,
           stage,
           progress,
           attempts: latestJob?.attempts ?? 0,
@@ -630,11 +636,11 @@ export class MeetingsController {
         return;
       }
 
-      await prisma.meeting.update({
-        where: { id },
+      // Claim only terminal/idle meetings. A concurrent retry must not reset a running job.
+      await prisma.meeting.updateMany({
+        where: { id, workspaceId, processingStatus: { in: ['READY', 'FAILED', 'NOT_STARTED'] } },
         data: { processingStatus: 'QUEUED' },
       });
-
       const queueResult = await enqueueMeetingProcessing({
         meetingId: id,
         workspaceId,
@@ -644,7 +650,7 @@ export class MeetingsController {
         success: true,
         data: {
           meetingId: id,
-          processingStatus: 'QUEUED',
+          processingStatus: queueResult.status === 'REDIS_UNAVAILABLE' ? 'FAILED' : 'QUEUED',
           queueStatus: queueResult.status,
         },
         meta: { requestId: req.id, timestamp: new Date().toISOString(), version: 'v1' },

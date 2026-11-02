@@ -56,6 +56,13 @@ Run both dashboard and backend concurrently:
 pnpm dev
 ```
 
+The development API also starts the meeting-processing worker. Configure `REDIS_URL`
+and `OPENAI_API_KEY` locally; never commit credentials. For local Redis, start Docker
+Desktop and run `docker compose up -d redis` (Redis is bound to loopback only and
+persists queue state in a named volume). `pnpm processing:doctor` checks connectivity,
+worker presence, and database status counts without printing credentials. See
+[processing operations](docs/testing/meeting-processing.md) for verification and recovery.
+
 Or run services individually:
 ```bash
 # Dashboard (runs on http://localhost:5173)
@@ -89,6 +96,12 @@ pnpm dev:api
 ---
 
 ## 8x Agent Capture System
+
+Codex sessions now follow [AGENTS.md](AGENTS.md) and
+[the conversation logging workflow](docs/conversation-logging.md). Codex logging is
+assistant-maintained; automatic runtime capture has not been verified. Existing
+Antigravity logs are preserved. The legacy capture mechanism described below applies
+to Antigravity only and does not capture Codex chat messages.
 
 As required by the 8x assignment brief, all agent interactions are automatically logged in `.agent-logs/` matching `YYYY-MM-DD_HH-MM-SS_<session-id>.md`.
 The capture system is driven by:

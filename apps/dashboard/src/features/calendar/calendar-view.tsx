@@ -1,19 +1,13 @@
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
-import { SEEDED_MEETINGS } from '../../data/seeded-meetings';
-import {
-  MeetingStatusBadge,
-  SpeakerAvatar,
-  Button,
-  Badge,
-} from '@meetflow/ui';
+import { useQuery } from '@tanstack/react-query';
+import { MeetingStatusBadge, Button, Badge } from '@meetflow/ui';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  Video,
-  Clock,
   List,
+  RefreshCw,
 } from 'lucide-react';
 import {
   formatDuration,
@@ -22,24 +16,44 @@ import {
   groupMeetingsByDate,
   PLATFORM_LABEL,
 } from '../../lib/meeting-format';
+import { apiFetchMeetings } from '../meetings/meetings-api';
+import { MeetingItem } from '../../types/meeting';
+import { AddMeetingDialog } from '../meetings/add-meeting-dialog';
 
 export function CalendarView() {
   const [viewMode, setViewMode] = React.useState<'month' | 'agenda'>('month');
 
-  // November 2026 is the base month for seeded meetings
-  const [currentMonthDate, setCurrentMonthDate] = React.useState<Date>(() => new Date(2026, 10, 1));
-  const [selectedDateStr, setSelectedDateStr] = React.useState<string>('2026-11-01');
+  const [currentMonthDate, setCurrentMonthDate] = React.useState(
+    () => new Date(),
+  );
+  const [selectedDateStr, setSelectedDateStr] = React.useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });
+  const query = useQuery({
+    gcTime: 0,
+    staleTime: 0,
+    queryKey: ['meetings', 'calendar'],
+    queryFn: () => apiFetchMeetings(),
+    retry: false,
+  });
+  const meetings = query.data?.meetings ?? [];
+  const loading = query.isPending;
+  const loadBackendMeetings = () => {
+    void query.refetch();
+  };
 
   // Sorted meetings
   const sortedMeetings = React.useMemo(() => {
-    return [...SEEDED_MEETINGS].sort(
-      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    return [...meetings].sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
     );
-  }, []);
+  }, [meetings]);
 
   // Meetings mapped by YYYY-MM-DD
   const meetingsByDateMap = React.useMemo(() => {
-    const map = new Map<string, typeof SEEDED_MEETINGS>();
+    const map = new Map<string, MeetingItem[]>();
     sortedMeetings.forEach((m) => {
       const d = new Date(m.startDate);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -60,46 +74,58 @@ export function CalendarView() {
     return groupMeetingsByDate(sortedMeetings);
   }, [sortedMeetings]);
 
-  // Month grid calculations
+  // Calendar month computation
   const year = currentMonthDate.getFullYear();
   const month = currentMonthDate.getMonth();
-  const monthName = currentMonthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 is Sunday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 is Sunday
 
-  // Navigation handlers
+  // Month navigation
   const handlePrevMonth = () => {
     setCurrentMonthDate(new Date(year, month - 1, 1));
   };
+
   const handleNextMonth = () => {
     setCurrentMonthDate(new Date(year, month + 1, 1));
   };
+
   const handleToday = () => {
-    setCurrentMonthDate(new Date(2026, 10, 1));
-    setSelectedDateStr('2026-11-01');
+    const now = new Date();
+    setCurrentMonthDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    setSelectedDateStr(todayStr);
   };
 
+  const monthName = currentMonthDate.toLocaleString('default', {
+    month: 'long',
+    year: 'numeric',
+  });
+
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-            Calendar & Schedule
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              Calendar & Schedule
+            </h1>
+            <Badge variant="secondary" className="text-xs">
+              {sortedMeetings.length} Meetings
+            </Badge>
+            {loading && (
+              <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground ml-1" />
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
-            View scheduled meetings, past recordings, and upcoming intelligence capture.
+            Synchronized meeting schedules, transcripts, and intelligence review
+            dates.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="secondary" className="text-xs gap-1.5 py-1 text-muted-foreground font-normal">
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-            <span>Google Calendar: Disconnected</span>
-          </Badge>
-
-          {/* View Mode Toggle: Month vs Agenda */}
+        {/* View Mode Toggle & Add Meeting Dialog */}
+        <div className="flex items-center gap-2.5">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
             <button
               type="button"
@@ -126,10 +152,33 @@ export function CalendarView() {
               <span>Agenda</span>
             </button>
           </div>
+
+          <AddMeetingDialog onMeetingCreated={loadBackendMeetings} />
         </div>
       </div>
 
-      {viewMode === 'month' ? (
+      {loading ? (
+        <div role="status" aria-label="Loading calendar" className="space-y-3">
+          <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/30" />
+          <div className="h-24 animate-pulse rounded-lg bg-muted/30" />
+        </div>
+      ) : query.isError ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 p-6 text-center space-y-3"
+        >
+          <p className="text-sm">
+            {query.error.message || 'Unable to load calendar meetings.'}
+          </p>
+          <Button variant="outline" size="sm" onClick={loadBackendMeetings}>
+            Try Again
+          </Button>
+        </div>
+      ) : meetings.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+          No meetings in this workspace yet. Add a meeting to see it here.
+        </div>
+      ) : viewMode === 'month' ? (
         /* Month Calendar View */
         <div className="space-y-6">
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4">
@@ -171,102 +220,118 @@ export function CalendarView() {
               </div>
             </div>
 
-            {/* Days of Week Header */}
-            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 pb-1 border-b border-border/60">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-                <div key={d} className="py-1">
-                  {d}
-                </div>
-              ))}
+            {/* Calendar Days of Week Header */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider py-1 border-b border-border/60">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
             </div>
 
-            {/* 7-column Calendar Days Grid */}
-            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-              {/* Empty leading slots */}
+            {/* Days Grid */}
+            <div className="grid grid-cols-7 gap-1 sm:gap-2">
+              {/* Empty leading cells */}
               {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-                <div key={`empty-${i}`} className="min-h-16 sm:min-h-20 rounded-lg p-1 opacity-25" />
+                <div
+                  key={`empty-${i}`}
+                  className="h-20 sm:h-24 rounded-lg bg-muted/10 p-1 opacity-40"
+                />
               ))}
 
-              {/* Days in Month */}
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const dayNum = i + 1;
+              {/* Month Day Cells */}
+              {Array.from({ length: daysInMonth }).map((_, idx) => {
+                const dayNum = idx + 1;
                 const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-                const meetingsOnDay = meetingsByDateMap.get(dateKey) || [];
+                const dayMeetings = meetingsByDateMap.get(dateKey) || [];
                 const isSelected = selectedDateStr === dateKey;
-                const hasMeetings = meetingsOnDay.length > 0;
+                const hasMeetings = dayMeetings.length > 0;
 
                 return (
-                  <button
+                  <div
                     key={dateKey}
-                    type="button"
                     onClick={() => setSelectedDateStr(dateKey)}
-                    className={`relative min-h-16 sm:min-h-20 rounded-lg border p-1.5 sm:p-2 text-left transition-all flex flex-col justify-between ${
+                    className={`h-20 sm:h-24 rounded-lg border p-1.5 flex flex-col justify-between transition-all cursor-pointer ${
                       isSelected
-                        ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary'
+                        ? 'border-primary ring-1 ring-primary bg-primary/5 shadow-xs'
                         : hasMeetings
-                        ? 'border-border/80 bg-secondary/50 hover:bg-secondary/80'
-                        : 'border-border/40 hover:bg-muted/40'
+                          ? 'border-border/80 bg-card hover:border-primary/50 hover:bg-muted/30'
+                          : 'border-border/40 bg-card/50 hover:border-border hover:bg-muted/20'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-xs font-semibold ${
+                        className={`text-xs font-semibold rounded-full h-5 w-5 flex items-center justify-center ${
                           isSelected
-                            ? 'text-primary font-bold'
+                            ? 'bg-primary text-primary-foreground'
                             : 'text-foreground'
                         }`}
                       >
                         {dayNum}
                       </span>
-
                       {hasMeetings && (
-                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground shadow-2xs font-mono">
-                          {meetingsOnDay.length}
+                        <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-full px-1.5 py-0.2">
+                          {dayMeetings.length}
                         </span>
                       )}
                     </div>
 
-                    {hasMeetings && (
-                      <div className="space-y-0.5 mt-1 overflow-hidden">
-                        {meetingsOnDay.slice(0, 2).map((m) => (
-                          <div
-                            key={m.id}
-                            className="truncate text-[9px] sm:text-[10px] text-muted-foreground font-medium"
-                          >
-                            • {m.title}
-                          </div>
-                        ))}
-                        {meetingsOnDay.length > 2 && (
-                          <div className="text-[9px] text-primary font-semibold">
-                            +{meetingsOnDay.length - 2} more
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </button>
+                    {/* Micro Meeting Pill Indicator */}
+                    <div className="space-y-1 overflow-hidden">
+                      {dayMeetings.slice(0, 2).map((m) => (
+                        <div
+                          key={m.id}
+                          className="truncate rounded px-1 py-0.5 text-[9px] font-medium bg-secondary/80 text-foreground border border-border/40 flex items-center gap-1"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                              m.status === 'ready'
+                                ? 'bg-emerald-500'
+                                : m.status === 'processing'
+                                  ? 'bg-amber-500 animate-pulse'
+                                  : 'bg-primary'
+                            }`}
+                          />
+                          <span className="truncate">{m.title}</span>
+                        </div>
+                      ))}
+                      {dayMeetings.length > 2 && (
+                        <p className="text-[9px] text-muted-foreground font-mono text-center">
+                          +{dayMeetings.length - 2} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </div>
 
           {/* Selected Date Detail Drawer / List */}
-          <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-border/60 pb-3">
               <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" />
-                <h3 className="text-xs sm:text-sm font-semibold text-foreground">
-                  Meetings for {new Date(selectedDateStr + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                <CalendarIcon className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">
+                  Meetings for{' '}
+                  {formatMeetingDate(`${selectedDateStr}T12:00:00Z`)}
                 </h3>
               </div>
               <span className="text-xs text-muted-foreground font-mono">
-                {selectedMeetings.length} {selectedMeetings.length === 1 ? 'meeting' : 'meetings'}
+                {selectedMeetings.length}{' '}
+                {selectedMeetings.length === 1 ? 'meeting' : 'meetings'}
               </span>
             </div>
 
             {selectedMeetings.length > 0 ? (
               <div className="divide-y divide-border/60">
                 {selectedMeetings.map((m) => (
-                  <div key={m.id} className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div
+                    key={m.id}
+                    className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <Link
@@ -279,7 +344,9 @@ export function CalendarView() {
                         <MeetingStatusBadge status={m.status} />
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {formatMeetingTime(m.startDate)} · {formatDuration(m.durationSeconds)} · {PLATFORM_LABEL[m.platform]}
+                        {formatMeetingTime(m.startDate)} ·{' '}
+                        {formatDuration(m.durationSeconds)} ·{' '}
+                        {PLATFORM_LABEL[m.platform]}
                       </p>
                     </div>
 
@@ -288,7 +355,11 @@ export function CalendarView() {
                       params={{ meetingId: m.id }}
                       className="shrink-0"
                     >
-                      <Button variant="outline" size="sm" className="h-7 text-xs">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                      >
                         Open Meeting
                       </Button>
                     </Link>
@@ -318,56 +389,42 @@ export function CalendarView() {
               </div>
 
               <div className="space-y-2">
-                {meetings.map((meeting) => (
+                {meetings.map((m) => (
                   <div
-                    key={meeting.id}
-                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border p-3.5 transition-colors ${
-                      meeting.status === 'scheduled'
-                        ? 'border-dashed border-primary/50 bg-primary/5'
-                        : 'border-border bg-card hover:bg-secondary/40'
-                    }`}
+                    key={m.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-2xs hover:border-primary/50 transition-colors"
                   >
-                    <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-                        <Video className="h-4 w-4" />
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to="/meetings/$meetingId"
+                          params={{ meetingId: m.id }}
+                          className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate"
+                        >
+                          {m.title}
+                        </Link>
+                        <MeetingStatusBadge status={m.status} />
                       </div>
-
-                      <div className="flex flex-col min-w-0 flex-1 space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to="/meetings/$meetingId"
-                            params={{ meetingId: meeting.id }}
-                            className="truncate text-xs font-semibold text-foreground hover:text-primary transition-colors"
-                          >
-                            {meeting.title}
-                          </Link>
-                          <MeetingStatusBadge status={meeting.status} />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{formatMeetingDate(meeting.startDate)} at {formatMeetingTime(meeting.startDate)}</span>
-                          <span>·</span>
-                          <span>{formatDuration(meeting.durationSeconds)}</span>
-                          <span>·</span>
-                          <span>{PLATFORM_LABEL[meeting.platform]}</span>
-                        </div>
-                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatMeetingDate(m.startDate)} ·{' '}
+                        {formatMeetingTime(m.startDate)} ·{' '}
+                        {formatDuration(m.durationSeconds)}
+                      </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="hidden sm:flex items-center -space-x-1.5">
-                        {meeting.participants.slice(0, 3).map((p) => (
-                          <SpeakerAvatar key={p.id} name={p.name} size="xs" />
-                        ))}
-                      </div>
-                      <Link
-                        to="/meetings/$meetingId"
-                        params={{ meetingId: meeting.id }}
+                    <Link
+                      to="/meetings/$meetingId"
+                      params={{ meetingId: m.id }}
+                      className="shrink-0"
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
                       >
-                        <Button variant="outline" size="sm" className="h-7 text-xs">
-                          {meeting.status === 'scheduled' ? 'View Schedule' : 'View Notes'}
-                        </Button>
-                      </Link>
-                    </div>
+                        View Details
+                      </Button>
+                    </Link>
                   </div>
                 ))}
               </div>

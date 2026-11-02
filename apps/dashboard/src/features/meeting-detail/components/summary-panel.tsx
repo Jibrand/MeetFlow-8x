@@ -47,6 +47,7 @@ export function SummaryPanel({
 
       {/* Structured Sections */}
       <div className="space-y-3.5">
+        {template.sections.length === 0 && <p className="text-sm text-muted-foreground">No summary is available for this meeting.</p>}
         {template.sections.map((section, idx) => (
           <Card key={idx} className="border border-border bg-card/80 shadow-2xs">
             <CardHeader className="p-3.5 pb-2 flex flex-row items-center justify-between border-b border-border/40">

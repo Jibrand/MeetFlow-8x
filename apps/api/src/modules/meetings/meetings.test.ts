@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../../app';
 import { prisma } from '../../lib/prisma';
 import { generateAccessToken } from '../../lib/security';
+import { enqueueMeetingProcessing } from '../../queues/meeting-processing.queue';
 
 vi.mock('../../lib/prisma', () => ({
   prisma: {
@@ -12,6 +13,7 @@ vi.mock('../../lib/prisma', () => ({
       findUnique: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       delete: vi.fn(),
       count: vi.fn(),
     },
@@ -69,7 +71,7 @@ describe('Meetings and Workspace Authorization Integration Tests', () => {
     vi.clearAllMocks();
 
     // Default workspace resolution for user1 -> workspace1
-    vi.mocked(prisma.workspaceMember.findFirst).mockImplementation(async (args: any) => {
+    const workspaceMemberMock = async (args: { where?: { userId?: unknown } } | undefined) => {
       if (args?.where?.userId === user1.userId) {
         return {
           id: 'wm-1',
@@ -91,10 +93,21 @@ describe('Meetings and Workspace Authorization Integration Tests', () => {
         } as any;
       }
       return null;
-    });
+    };
+    vi.mocked(prisma.workspaceMember.findFirst).mockImplementation(workspaceMemberMock as unknown as typeof prisma.workspaceMember.findFirst);
   });
 
   describe('POST /api/v1/meetings', () => {
+    it('reports a coherent terminal polling response when the job completes between relation reads', async () => {
+      vi.mocked(prisma.meeting.findFirst).mockResolvedValue({
+        id: 'meeting-123', processingStatus: 'FINALIZING',
+        processingJobs: [{ status: 'COMPLETED', stage: 'COMPLETED', progress: 100, attempts: 1 }],
+      } as unknown as Awaited<ReturnType<typeof prisma.meeting.findFirst>>);
+      const res = await request(app).get('/api/v1/meetings/meeting-123/processing')
+        .set('Cookie', [`meetflow_access_token=${tokenUser1}`]);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ processingStatus: 'READY', progress: 100, attempts: 1 });
+    });
     it('creates meeting with transcript and sets status to QUEUED', async () => {
       const mockCreatedMeeting = {
         id: 'meeting-123',
@@ -217,6 +230,15 @@ describe('Meetings and Workspace Authorization Integration Tests', () => {
   });
 
   describe('GET /api/v1/meetings/:id/processing', () => {
+    it('claims only idle/terminal meetings before retry dispatch and reports Redis failure honestly', async () => {
+      vi.mocked(prisma.meeting.findFirst).mockResolvedValue({ id: 'meeting-123', processingStatus: 'READY', transcripts: [{}] } as unknown as Awaited<ReturnType<typeof prisma.meeting.findFirst>>);
+      vi.mocked(enqueueMeetingProcessing).mockResolvedValueOnce({ jobId: 'meeting-process-meeting-123', status: 'REDIS_UNAVAILABLE' });
+      const res = await request(app).post('/api/v1/meetings/meeting-123/reprocess')
+        .set('Cookie', [`meetflow_access_token=${tokenUser1}`]);
+      expect(res.status).toBe(200);
+      expect(prisma.meeting.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ processingStatus: { in: ['READY', 'FAILED', 'NOT_STARTED'] } }) }));
+      expect(res.body.data).toMatchObject({ processingStatus: 'FAILED', queueStatus: 'REDIS_UNAVAILABLE' });
+    });
     it('returns live processing progress and stage', async () => {
       vi.mocked(prisma.meeting.findFirst).mockResolvedValue({
         id: 'meeting-123',

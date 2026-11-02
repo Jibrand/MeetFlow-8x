@@ -1,4 +1,5 @@
 {
+  "quiet": true,
   "watch": ["src"],
   "ext": "ts,json",
   "ignore": ["src/**/*.test.ts", "dist", "node_modules", "prisma/migrations"],

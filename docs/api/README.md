@@ -99,6 +99,18 @@ All client-facing endpoints are namespaced under the versioned prefix:
 
 ## 4. OpenAPI 3.1 Specification
 
+### Meeting processing outcomes
+
+- `POST /meetings`, transcript upload, and reprocess save data independently from queue availability. `queueStatus: REDIS_UNAVAILABLE` means the persisted meeting and processing job are `FAILED`; it does not mean the job is waiting for an unimplemented database poller. Creation still returns 201 because the meeting was saved.
+- Reprocess reports `processingStatus: FAILED` when Redis dispatch fails. Repeated requests do not reset an active job's progress. Completed/failed retained BullMQ jobs are removed before dispatching a fresh attempt with the same meeting job ID.
+- `/processing` reports persisted `attempts`, `stage`, `progress`, `errorCode`, `startedAt`, and `completedAt`. Provider failures retry up to three times with exponential backoff. `READY` and the completed job at 100% are saved together with the intelligence results. No-transcript jobs fail without retrying.
+- Failure strings identify Redis connectivity, missing workers, paused queues, exhausted stalled recovery, missing AI configuration, provider authentication/quota/timeouts, and invalid provider output. Provider payloads and credentials are not exposed in these strings.
+- The API checks stale jobs every 15 seconds (queued jobs become eligible after 30 seconds); missing workers produce an actionable failure instead of a permanent 5% queue. Interrupted jobs use BullMQ stalled recovery; an active job with no progress for ten minutes becomes FAILED even if its connection remains alive. Database status guards prevent a stale watchdog snapshot from overwriting READY and prevent late processing from reviving a timed-out job.
+
+Development starts a worker inside the API process. Production runs `pnpm --filter @meetflow/api start:worker` separately after building. See [processing operations](../testing/meeting-processing.md).
+
+Overview recent meetings include `actionItemCount`. Dashboard action lists follow the existing pagination metadata to load all pages, and task completion on Overview/Action Items uses `PATCH /action-items/:id` rather than local overrides. All five meeting-related screens use backend data and explicit loading/error/empty states.
+
 The machine-readable specification is located at:
 [openapi.yaml](./openapi.yaml)
 

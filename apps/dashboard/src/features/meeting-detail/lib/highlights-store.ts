@@ -1,5 +1,4 @@
 import { HighlightData } from '../../../types/meeting';
-import { SEEDED_MEETINGS } from '../../../data/seeded-meetings';
 
 const STORAGE_KEY = 'meetflow-highlights-store-v1';
 const EVENT_NAME = 'meetflow-highlights-updated';
@@ -29,9 +28,7 @@ function saveStoredHighlightsState(state: HighlightsStoreState) {
   }
 }
 
-export function getMeetingHighlights(meetingId: string): HighlightData[] {
-  const meeting = SEEDED_MEETINGS.find((m) => m.id === meetingId);
-  const baseHighlights: HighlightData[] = meeting?.highlights || [];
+export function getMeetingHighlights(meetingId: string, baseHighlights: HighlightData[] = []): HighlightData[] {
   const state = getStoredHighlightsState();
   const deletedIds = new Set(state.deletedIds || []);
   const updatedMap = state.updatedMap || {};

@@ -1,32 +1,38 @@
 import * as React from 'react';
 import { Link } from '@tanstack/react-router';
-import { ActionItemData } from '../../types/meeting';
-import { ActionItemRow, Input, Button, Badge, EmptyState, toast } from '@meetflow/ui';
-import { Search, CheckCircle2, Clock, CheckSquare, AlertTriangle } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-  getMergedActionItems,
-  toggleActionItemCompleted,
-  subscribeToActionItemChanges,
-} from '../meeting-detail/lib/action-items-store';
-import { isOverdue } from './use-action-items';
+  ActionItemRow,
+  Input,
+  Button,
+  Badge,
+  EmptyState,
+  toast,
+} from '@meetflow/ui';
+import {
+  Search,
+  CheckCircle2,
+  Clock,
+  CheckSquare,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react';
+
+import { isOverdue, useActionItemsQuery } from './use-action-items';
 import { Pagination } from '../../components/ui/pagination';
+import { apiUpdateActionItem } from '../meetings/meetings-api';
 
 const PAGE_SIZE = 8;
 
 export function ActionItemsView() {
-  const [actionItems, setActionItems] = React.useState<ActionItemData[]>(() =>
-    getMergedActionItems()
-  );
-
-  React.useEffect(() => {
-    const unsubscribe = subscribeToActionItemChanges(() => {
-      setActionItems(getMergedActionItems());
-    });
-    return unsubscribe;
-  }, []);
-
+  const queryClient = useQueryClient();
+  const query = useActionItemsQuery();
+  const actionItems = query.data ?? [];
+  const loading = query.isPending;
   const [search, setSearch] = React.useState('');
-  const [filter, setFilter] = React.useState<'all' | 'open' | 'completed' | 'overdue'>('all');
+  const [filter, setFilter] = React.useState<
+    'all' | 'open' | 'completed' | 'overdue'
+  >('all');
   const [currentPage, setCurrentPage] = React.useState(1);
   const now = React.useMemo(() => new Date(), []);
 
@@ -35,16 +41,23 @@ export function ActionItemsView() {
     setCurrentPage(1);
   }, [filter, search]);
 
-  const handleToggle = (id: string, completed: boolean) => {
-    toggleActionItemCompleted(id, completed);
-    if (completed) {
-      toast.success('Task marked completed');
+  const handleToggle = async (id: string, completed: boolean) => {
+    try {
+      await apiUpdateActionItem(id, { status: completed ? 'DONE' : 'TODO' });
+      await queryClient.invalidateQueries({ queryKey: ['action-items'] });
+      await queryClient.invalidateQueries({ queryKey: ['overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['meeting'] });
+      toast.success(completed ? 'Task marked completed' : 'Task reopened');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to save task.',
+      );
     }
   };
 
   const overdueCount = React.useMemo(
     () => actionItems.filter((i) => isOverdue(i, now)).length,
-    [actionItems, now]
+    [actionItems, now],
   );
   const openCount = actionItems.filter((i) => !i.completed).length;
   const completedCount = actionItems.filter((i) => i.completed).length;
@@ -91,9 +104,13 @@ export function ActionItemsView() {
                 <span>{overdueCount} Overdue</span>
               </Badge>
             )}
+            {loading && (
+              <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground ml-1" />
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Extracted automated action items and assigned deliverables across all meeting calls.
+            Extracted automated action items and assigned deliverables across
+            all meeting calls.
           </p>
         </div>
 
@@ -151,11 +168,39 @@ export function ActionItemsView() {
       </div>
 
       {/* Task List Workspace inside Bounded Surface */}
-      {filteredItems.length > 0 ? (
+      {loading ? (
+        <div
+          role="status"
+          aria-label="Loading action items"
+          className="space-y-3"
+        >
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="h-20 animate-pulse rounded-lg border bg-muted/30"
+            />
+          ))}
+        </div>
+      ) : query.isError ? (
+        <div role="alert" className="p-6 space-y-3">
+          <p>{query.error.message}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            Try Again
+          </Button>
+        </div>
+      ) : filteredItems.length > 0 ? (
         <div className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-4">
           <div className="divide-y divide-border">
             {pagedItems.map((item) => (
-              <div key={item.id} className="py-3 first:pt-0 last:pb-0 space-y-1">
+              <div
+                key={item.id}
+                className="py-3 first:pt-0 last:pb-0 space-y-1"
+              >
                 <ActionItemRow
                   id={item.id}
                   title={item.title}

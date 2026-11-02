@@ -23,19 +23,14 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
       id: 'msg-welcome',
       sender: 'assistant',
       text: `Hello! I'm your MeetFlow AI assistant for "${meeting.title}". You can ask me about decisions, participant commitments, or key takeaways discussed during this call.`,
-      citations: meeting.summary?.decisions[0]
-        ? [
-            {
-              quote: meeting.summary.decisions[0],
-              seconds: Math.min(meeting.durationSeconds, 20),
-              speaker: meeting.organizer.name,
-            },
-          ]
-        : undefined,
     },
   ]);
 
   const [isThinking, setIsThinking] = React.useState(false);
+  const evidenceFor = (quote: string): NonNullable<Message['citations']> => {
+    const turn = meeting.transcriptTurns?.find((item) => item.text.includes(quote));
+    return turn ? [{ quote, seconds: turn.startTime, speaker: turn.speakerName }] : [];
+  };
 
   const samplePrompts = [
     'What were the key decisions made?',
@@ -67,31 +62,17 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
           decisions.length > 0
             ? `Based on the discussion, here are the recorded decisions:\n${decisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`
             : 'No formal decisions were flagged for this call.';
-        citations = decisions.slice(0, 2).map((d, i) => ({
-          quote: d,
-          seconds: Math.min(meeting.durationSeconds, 25 + i * 30),
-          speaker: meeting.organizer.name,
-        }));
+        citations = decisions.slice(0, 2).flatMap(evidenceFor);
       } else if (q.includes('commit') || q.includes('action') || q.includes('next step')) {
         const actions = meeting.actionItems || [];
         reply =
           actions.length > 0
             ? `Here are the commitments identified from the call:\n${actions.map((a, i) => `${i + 1}. ${a.title} (${a.assigneeName || 'Unassigned'})`).join('\n')}`
             : 'No commitments or tasks were recorded.';
-        citations = actions.slice(0, 2).map((a) => ({
-          quote: a.title,
-          seconds: a.timestampSeconds || 0,
-          speaker: a.assigneeName || meeting.organizer.name,
-        }));
+        citations = actions.slice(0, 2).flatMap((action) => evidenceFor(action.title));
       } else {
         reply = `According to the transcript of "${meeting.title}", the participants focused on: ${meeting.summary?.executiveSummary || meeting.previewSummary}`;
-        citations = [
-          {
-            quote: meeting.previewSummary,
-            seconds: 0,
-            speaker: meeting.organizer.name,
-          },
-        ];
+        citations = [];
       }
 
       setMessages((prev) => [
@@ -113,7 +94,7 @@ export function AskMeetingPanel({ meeting, onSeek }: AskMeetingPanelProps) {
       <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3.5 py-2 text-[11px] text-muted-foreground">
         <Info className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
-          Contextual meeting Q&A. Full streaming LLM inference arrives in Phase 06.
+          Answers use this meeting's saved summary and action items.
         </span>
       </div>
 

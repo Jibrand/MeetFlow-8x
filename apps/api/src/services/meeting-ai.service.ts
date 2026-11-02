@@ -7,7 +7,12 @@ export const ExtractedActionItemSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().default(''),
   assigneeName: z.string().nullable().optional().default(null),
-  dueDate: z.string().nullable().optional().default(null),
+  dueDate: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional()
+    .default(null),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
 });
 export type ExtractedActionItem = z.infer<typeof ExtractedActionItemSchema>;
@@ -28,7 +33,9 @@ export const MeetingIntelligenceResultSchema = z.object({
   actionItems: z.array(ExtractedActionItemSchema).default([]),
   model: z.string(),
 });
-export type MeetingIntelligenceResult = z.infer<typeof MeetingIntelligenceResultSchema>;
+export type MeetingIntelligenceResult = z.infer<
+  typeof MeetingIntelligenceResultSchema
+>;
 
 export class MeetingAIService {
   private client: OpenAI | null = null;
@@ -42,11 +49,12 @@ export class MeetingAIService {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error(
-        'OPENAI_API_KEY is not configured in the environment. Please set OPENAI_API_KEY in your .env configuration.'
+        'OPENAI_API_KEY is not configured in the environment. Please set OPENAI_API_KEY in your .env configuration.',
       );
     }
     if (!this.client) {
-      this.client = new OpenAI({ apiKey });
+      // BullMQ owns retries. Bound each provider request instead of nesting SDK retries.
+      this.client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 0 });
     }
     return this.client;
   }
@@ -57,7 +65,8 @@ export class MeetingAIService {
   private formatTranscript(segments: ParsedSegment[]): string {
     return segments
       .map((s) => {
-        const time = s.startMs !== null ? `[${Math.floor(s.startMs / 1000)}s] ` : '';
+        const time =
+          s.startMs !== null ? `[${Math.floor(s.startMs / 1000)}s] ` : '';
         const speaker = s.speakerName ? `${s.speakerName}: ` : '';
         return `${time}${speaker}${s.text}`;
       })
@@ -166,10 +175,11 @@ Extract structured intelligence in JSON matching this schema:
     });
 
     if (!validated.success) {
-      logger.error('OpenAI response validation failed', {
-        error: validated.error.format(),
-      });
-      throw new Error(`OpenAI response schema mismatch: ${validated.error.message}`);
+      const fields = validated.error.issues
+        .map((issue) => issue.path.join('.'))
+        .join(', ');
+      logger.error('OpenAI response validation failed', { fields });
+      throw new Error(`OpenAI response schema mismatch at: ${fields}`);
     }
 
     return validated.data;

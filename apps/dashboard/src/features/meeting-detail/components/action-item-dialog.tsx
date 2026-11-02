@@ -20,8 +20,11 @@ export interface ActionItemDialogProps {
   meetingTitle: string;
   initialTimestamp?: number;
   initialItem?: ActionItemData | null;
-  onSave: (item: Omit<ActionItemData, 'id'>) => void;
-  onUpdate?: (id: string, updates: Partial<ActionItemData>) => void;
+  onSave: (item: Omit<ActionItemData, 'id'>) => void | Promise<void>;
+  onUpdate?: (
+    id: string,
+    updates: Partial<ActionItemData>,
+  ) => void | Promise<void>;
 }
 
 export function ActionItemDialog({
@@ -37,15 +40,18 @@ export function ActionItemDialog({
   const [title, setTitle] = React.useState('');
   const [assigneeName, setAssigneeName] = React.useState('');
   const [dueDate, setDueDate] = React.useState('');
-  const [priority, setPriority] = React.useState<'low' | 'medium' | 'high'>('medium');
+  const [priority, setPriority] = React.useState<'low' | 'medium' | 'high'>(
+    'medium',
+  );
   const [timestampSeconds, setTimestampSeconds] = React.useState<number>(0);
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       if (initialItem) {
         setTitle(initialItem.title);
         setAssigneeName(initialItem.assigneeName || '');
-        setDueDate(initialItem.dueDate || '');
+        setDueDate(initialItem.dueDate?.slice(0, 10) || '');
         setPriority(initialItem.priority);
         setTimestampSeconds(initialItem.timestampSeconds || 0);
       } else {
@@ -58,36 +64,48 @@ export function ActionItemDialog({
     }
   }, [open, initialItem, initialTimestamp]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!title.trim()) {
       toast.error('Please enter an action item description');
       return;
     }
 
-    if (initialItem && onUpdate) {
-      onUpdate(initialItem.id, {
-        title: title.trim(),
-        assigneeName: assigneeName.trim() || undefined,
-        dueDate: dueDate || undefined,
-        priority,
-        timestampSeconds,
-      });
-      toast.success('Action item updated');
-    } else {
-      onSave({
-        meetingId,
-        meetingTitle,
-        title: title.trim(),
-        assigneeName: assigneeName.trim() || undefined,
-        dueDate: dueDate || undefined,
-        priority,
-        completed: false,
-        timestampSeconds,
-      });
-      toast.success('Action item created');
+    setSaving(true);
+    try {
+      if (initialItem && onUpdate) {
+        await onUpdate(initialItem.id, {
+          title: title.trim(),
+          assigneeName: assigneeName.trim() || undefined,
+          dueDate: dueDate || undefined,
+          priority,
+          timestampSeconds,
+        });
+        toast.success('Action item updated');
+      } else {
+        await onSave({
+          meetingId,
+          meetingTitle,
+          title: title.trim(),
+          assigneeName: assigneeName.trim() || undefined,
+          dueDate: dueDate || undefined,
+          priority,
+          completed: false,
+          timestampSeconds,
+        });
+        toast.success(
+          initialItem ? 'Action item updated' : 'Action item created',
+        );
+      }
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to save action item.',
+      );
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   };
 
   return (
@@ -108,7 +126,9 @@ export function ActionItemDialog({
           <div className="space-y-3 text-xs">
             {/* Description */}
             <div className="space-y-1">
-              <label className="font-medium text-foreground">Task Description</label>
+              <label className="font-medium text-foreground">
+                Task Description
+              </label>
               <Input
                 placeholder="e.g. Verify database indexing in staging"
                 value={title}
@@ -166,7 +186,9 @@ export function ActionItemDialog({
             {/* Linked Timestamp */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="font-medium text-foreground">Source Timestamp</label>
+                <label className="font-medium text-foreground">
+                  Source Timestamp
+                </label>
                 <span className="text-[11px] font-mono text-muted-foreground">
                   {formatSecondsToTime(timestampSeconds)}
                 </span>
@@ -177,7 +199,9 @@ export function ActionItemDialog({
                   type="number"
                   min={0}
                   value={timestampSeconds}
-                  onChange={(e) => setTimestampSeconds(parseInt(e.target.value) || 0)}
+                  onChange={(e) =>
+                    setTimestampSeconds(parseInt(e.target.value) || 0)
+                  }
                   className="h-8 text-xs font-mono"
                 />
               </div>
@@ -194,7 +218,12 @@ export function ActionItemDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="h-8 text-xs">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving}
+              className="h-8 text-xs"
+            >
               {initialItem ? 'Save Changes' : 'Create Task'}
             </Button>
           </DialogFooter>

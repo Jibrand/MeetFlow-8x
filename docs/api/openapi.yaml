@@ -343,7 +343,7 @@ paths:
                     sourceFormat: { type: string, enum: [txt, srt, vtt] }
       responses:
         '201':
-          description: Meeting record created and background job enqueued if transcript provided.
+          description: Meeting is saved. With a transcript, queueStatus is QUEUED on dispatch or REDIS_UNAVAILABLE on failure; dispatch failure returns processingStatus FAILED (not a perpetually queued meeting).
     get:
       summary: List Workspace Meetings
       security:
@@ -375,7 +375,7 @@ paths:
         - cookieAuth: []
       responses:
         '200':
-          description: Aggregated KPI metrics, recent meetings, and attention tasks.
+          description: Aggregated real workspace KPI metrics, recent meetings with actionItemCount, and open attention tasks. Empty workspaces return zero counts and empty lists.
 
   /meetings/{id}:
     get:
@@ -427,7 +427,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Transcript uploaded and processing enqueued.
+          description: Transcript saved. queueStatus is QUEUED or REDIS_UNAVAILABLE; a dispatch failure marks the persisted meeting and job FAILED.
     get:
       summary: Get Transcript and Segments
       security:
@@ -453,7 +453,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Live processing status, stage, and estimated progress percentage.
+          description: Live processingStatus, stage, progress (0-100), attempts, errorCode, startedAt and completedAt. READY has progress 100. FAILED contains an actionable errorCode string. Retry attempts remain QUEUED until running; missing workers or orphaned queue jobs are reconciled by the API watchdog.
 
   /meetings/{id}/reprocess:
     post:
@@ -467,7 +467,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Meeting re-queued for intelligence pipeline.
+          description: Returns queueStatus (QUEUED or REDIS_UNAVAILABLE) and processingStatus (QUEUED or FAILED). Completed and failed retained queue jobs are replaced; an existing active job is not duplicated or reset.
 
   /action-items:
     get:

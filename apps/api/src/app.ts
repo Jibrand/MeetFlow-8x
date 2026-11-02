@@ -45,6 +45,7 @@ export function createApp(): Express {
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
+      if (!config.isProduction) return;
       const duration = Date.now() - start;
       logger.info({
         message: 'HTTP Request',

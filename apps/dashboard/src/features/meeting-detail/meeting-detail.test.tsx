@@ -98,7 +98,7 @@ describe('MeetingDetailScaffold', () => {
     render(<MeetingDetailScaffold meeting={scheduledMeeting} meetingId={scheduledMeeting.id} />);
 
     expect(screen.getByText('This Meeting is Scheduled')).toBeDefined();
-    expect(screen.getByText(/Recording and automated AI note taking will begin when the call starts/i)).toBeDefined();
+    expect(screen.getByText(/No transcript has been processed for this meeting/i)).toBeDefined();
   });
 
   it('renders processing state notice with step breakdown', () => {
@@ -106,7 +106,7 @@ describe('MeetingDetailScaffold', () => {
     render(<MeetingDetailScaffold meeting={processingMeeting} meetingId={processingMeeting.id} />);
 
     expect(screen.getByText('AI Intelligence In Progress')).toBeDefined();
-    expect(screen.getByText(/Generating synchronized timestamps.../i)).toBeDefined();
+    expect(screen.getByText(/Waiting in BullMQ background queue/i)).toBeDefined();
   });
 
   it('renders error state and failure details when meeting processing failed', () => {

@@ -74,7 +74,7 @@ export function errorHandler(
     code,
     status,
     error: err.message,
-    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+    stack: process.env.NODE_ENV !== 'production' && status >= 500 ? err.stack : undefined,
   });
 
   res.status(status).json({

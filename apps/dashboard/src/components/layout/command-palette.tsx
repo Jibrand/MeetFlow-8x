@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { SEEDED_MEETINGS } from '../../data/seeded-meetings';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetchMeetings } from '../../features/meetings/meetings-api';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,14 @@ export interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = React.useState('');
   const navigate = useNavigate();
+  const meetingsQuery = useQuery({
+    queryKey: ['meetings', 'search'],
+    queryFn: () => apiFetchMeetings(),
+    enabled: open,
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+  });
 
   // Reset query on open
   React.useEffect(() => {
@@ -56,13 +65,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   ];
 
   const filteredNav = navigationItems.filter((item) =>
-    item.label.toLowerCase().includes(query.toLowerCase())
+    item.label.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const filteredMeetings = SEEDED_MEETINGS.filter((m) =>
-    m.title.toLowerCase().includes(query.toLowerCase()) ||
-    m.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())) ||
-    m.participants.some((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+  const filteredMeetings = (meetingsQuery.data?.meetings ?? []).filter(
+    (m) =>
+      m.title.toLowerCase().includes(query.toLowerCase()) ||
+      m.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())) ||
+      m.participants.some((p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()),
+      ),
   );
 
   const handleSelect = (path: string) => {
@@ -73,7 +85,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 overflow-hidden sm:max-w-xl max-h-[80vh] flex flex-col gap-0 border-border shadow-2xl">
-        <DialogTitle className="sr-only">Command Palette Navigation</DialogTitle>
+        <DialogTitle className="sr-only">
+          Command Palette Navigation
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Quick search meetings and navigate pages with keyboard
         </DialogDescription>
@@ -124,6 +138,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           )}
 
           {/* Meeting Matches */}
+          {meetingsQuery.isFetching && (
+            <p role="status" className="p-2 text-xs text-muted-foreground">
+              Loading meetings…
+            </p>
+          )}
+          {meetingsQuery.isError && (
+            <p role="alert" className="p-2 text-xs text-destructive">
+              Meetings unavailable. {meetingsQuery.error.message}
+            </p>
+          )}
           {filteredMeetings.length > 0 && (
             <div className="space-y-1">
               <span className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
@@ -145,7 +169,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       <span className="text-[10px] text-muted-foreground">
                         {Math.round(m.durationSeconds / 60)}m
                       </span>
-                      <Badge variant="outline" className="text-[9px] uppercase px-1 py-0">
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] uppercase px-1 py-0"
+                      >
                         {m.status}
                       </Badge>
                     </div>

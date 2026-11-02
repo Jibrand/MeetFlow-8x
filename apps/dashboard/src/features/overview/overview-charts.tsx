@@ -16,7 +16,7 @@ export interface MeetingsOverTimeChartProps {
   now?: Date;
 }
 
-/** Meetings recorded over the last 7 days derived from real seeded meetings data */
+/** Meetings recorded over the last 7 days from backend meetings. */
 export function MeetingsOverTimeChart({ meetings, now = new Date() }: MeetingsOverTimeChartProps) {
   const data = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now);

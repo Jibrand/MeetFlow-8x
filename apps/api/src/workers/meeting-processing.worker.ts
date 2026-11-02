@@ -1,17 +1,26 @@
 import '../env';
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { createRedisConnection, isRedisConfigured } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { transcriptParserService } from '../services/transcript-parser.service';
 import { meetingAIService } from '../services/meeting-ai.service';
-import { MEETING_PROCESSING_QUEUE_NAME, MeetingJobPayload } from '../queues/meeting-processing.queue';
+import {
+  MEETING_PROCESSING_QUEUE_NAME,
+  MeetingJobPayload,
+} from '../queues/meeting-processing.queue';
+import {
+  markProcessingFailed,
+  processingErrorCode,
+} from '../services/processing-state';
 
 /**
  * Core business logic: Process transcript into meeting intelligence.
  * Reusable across BullMQ worker, direct testing, and reconciliation runners.
  */
-export async function processMeetingIntelligence(meetingId: string): Promise<void> {
+export async function processMeetingIntelligence(
+  meetingId: string,
+): Promise<void> {
   logger.info('Starting meeting intelligence pipeline', { meetingId });
 
   const meeting = await prisma.meeting.findUnique({
@@ -27,29 +36,17 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
   if (!meeting) {
     throw new Error(`Meeting not found: ${meetingId}`);
   }
+  if (meeting.processingStatus === 'FAILED') {
+    logger.warn(
+      'Skipping cancelled meeting job; use Retry to dispatch a new attempt',
+      { meetingId },
+    );
+    return;
+  }
 
   const transcriptRecord = meeting.transcripts[0];
   if (!transcriptRecord || !transcriptRecord.rawText.trim()) {
-    await prisma.meeting.update({
-      where: { id: meetingId },
-      data: { processingStatus: 'FAILED' },
-    });
-    await prisma.meetingProcessingJob.upsert({
-      where: { jobId: `meeting-process-${meetingId}` },
-      update: {
-        status: 'FAILED',
-        stage: 'FAILED',
-        errorCode: 'NO_TRANSCRIPT_AVAILABLE',
-      },
-      create: {
-        meetingId,
-        jobId: `meeting-process-${meetingId}`,
-        status: 'FAILED',
-        stage: 'FAILED',
-        errorCode: 'NO_TRANSCRIPT_AVAILABLE',
-      },
-    });
-    throw new Error('No transcript text available for meeting.');
+    throw new UnrecoverableError('NO_TRANSCRIPT_AVAILABLE');
   }
 
   // --- STAGE 1: PARSING (Progress 10-30%) ---
@@ -58,8 +55,10 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
 
   const parseResult = transcriptParserService.parse(
     transcriptRecord.rawText,
-    transcriptRecord.sourceFormat
+    transcriptRecord.sourceFormat,
   );
+  if (!parseResult.segments.length)
+    throw new UnrecoverableError('NO_TRANSCRIPT_AVAILABLE');
 
   // Idempotently persist segments in transaction
   await prisma.$transaction(async (tx) => {
@@ -98,6 +97,11 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
   await updateJobProgress(meetingId, 'FINALIZING', 85, 'RUNNING');
 
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.meeting.updateMany({
+      where: { id: meetingId, processingStatus: 'FINALIZING' },
+      data: { processingStatus: 'FINALIZING' },
+    });
+    if (!claimed.count) throw new UnrecoverableError('PROCESSING_CANCELLED');
     // 1. Upsert Meeting Summary
     await tx.meetingSummary.upsert({
       where: { meetingId },
@@ -127,7 +131,10 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
     });
 
     const existingTitlesMap = new Map(
-      existingActionItems.map((item) => [item.title.toLowerCase().trim(), item])
+      existingActionItems.map((item) => [
+        item.title.toLowerCase().trim(),
+        item,
+      ]),
     );
 
     for (const extracted of aiResult.actionItems) {
@@ -136,7 +143,11 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
 
       if (existing) {
         // If user already touched or completed the task, never overwrite their status
-        if (existing.status === 'DONE' || existing.status === 'IN_PROGRESS') {
+        if (
+          existing.source === 'MANUAL' ||
+          existing.status === 'DONE' ||
+          existing.status === 'IN_PROGRESS'
+        ) {
           continue;
         }
         // Update description if still TODO
@@ -145,7 +156,9 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
           data: {
             description: extracted.description || existing.description,
             assigneeName: extracted.assigneeName || existing.assigneeName,
-            dueDate: extracted.dueDate ? new Date(extracted.dueDate) : existing.dueDate,
+            dueDate: extracted.dueDate
+              ? new Date(extracted.dueDate)
+              : existing.dueDate,
           },
         });
       } else {
@@ -171,6 +184,15 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
       data: {
         processingStatus: 'READY',
         meetingStatus: 'COMPLETED',
+        ...(parseResult.segments.some((segment) => segment.endMs != null)
+          ? {
+              durationSeconds: Math.ceil(
+                Math.max(
+                  ...parseResult.segments.map((segment) => segment.endMs ?? 0),
+                ) / 1000,
+              ),
+            }
+          : {}),
       },
     });
 
@@ -195,28 +217,35 @@ export async function processMeetingIntelligence(meetingId: string): Promise<voi
     });
   });
 
-  logger.info('Meeting intelligence processing completed successfully', { meetingId });
+  logger.info('Meeting intelligence processing completed successfully', {
+    meetingId,
+  });
 }
 
 async function updateJobProgress(
   meetingId: string,
-  stage: 'QUEUED' | 'PARSING' | 'ANALYZING' | 'FINALIZING' | 'COMPLETED' | 'FAILED',
+  stage: 'QUEUED' | 'PARSING' | 'ANALYZING' | 'FINALIZING',
   progress: number,
-  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED',
 ): Promise<void> {
   const jobId = `meeting-process-${meetingId}`;
-  await prisma.$transaction([
-    prisma.meeting.update({
-      where: { id: meetingId },
+  await prisma.$transaction(async (tx) => {
+    const changed = await tx.meeting.updateMany({
+      where: {
+        id: meetingId,
+        processingStatus: {
+          in: ['QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'],
+        },
+      },
       data: { processingStatus: stage },
-    }),
-    prisma.meetingProcessingJob.upsert({
+    });
+    if (!changed.count) throw new UnrecoverableError('PROCESSING_CANCELLED');
+    await tx.meetingProcessingJob.upsert({
       where: { jobId },
       update: {
         stage,
         progress,
         status,
-        startedAt: status === 'RUNNING' ? new Date() : undefined,
       },
       create: {
         meetingId,
@@ -226,8 +255,8 @@ async function updateJobProgress(
         status,
         startedAt: status === 'RUNNING' ? new Date() : undefined,
       },
-    }),
-  ]);
+    });
+  });
 }
 
 /**
@@ -237,7 +266,7 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
   if (!isRedisConfigured()) {
     logger.error(
       'Cannot start BullMQ worker: REDIS_URL is not configured in .env. ' +
-        'Please configure REDIS_URL to enable background worker processing.'
+        'Please configure REDIS_URL to enable background worker processing.',
     );
     return null;
   }
@@ -251,34 +280,63 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
       logger.info(`[Worker] Processing job ${job.id} for meeting ${meetingId}`);
 
       try {
+        await prisma.$transaction(async (tx) => {
+          const claimed = await tx.meeting.updateMany({
+            where: {
+              id: meetingId,
+              processingStatus: {
+                in: ['QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'],
+              },
+            },
+            data: { processingStatus: 'PARSING' },
+          });
+          if (!claimed.count)
+            throw new UnrecoverableError('PROCESSING_CANCELLED');
+          await tx.meetingProcessingJob.update({
+            where: { jobId: `meeting-process-${meetingId}` },
+            data: {
+              attempts: job.attemptsMade + 1,
+              startedAt: new Date(),
+              completedAt: null,
+              errorCode: null,
+            },
+          });
+        });
         await processMeetingIntelligence(meetingId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         logger.error(`[Worker] Job ${job.id} failed`, {
           meetingId,
-          error: err.message,
+          error: err instanceof Error ? err : String(err),
           attemptsMade: job.attemptsMade,
         });
 
-        const isLastAttempt = job.attemptsMade >= (job.opts.attempts || 3) - 1;
+        const isLastAttempt =
+          err instanceof UnrecoverableError ||
+          job.attemptsMade >= (job.opts.attempts || 1) - 1;
         if (isLastAttempt) {
-          await prisma.meeting.update({
-            where: { id: meetingId },
-            data: { processingStatus: 'FAILED' },
-          });
-          await prisma.meetingProcessingJob.upsert({
-            where: { jobId: `meeting-process-${meetingId}` },
-            update: {
-              status: 'FAILED',
-              stage: 'FAILED',
-              errorCode: err.message,
-            },
-            create: {
-              meetingId,
-              jobId: `meeting-process-${meetingId}`,
-              status: 'FAILED',
-              stage: 'FAILED',
-              errorCode: err.message,
-            },
+          await markProcessingFailed(meetingId, processingErrorCode(err));
+        } else {
+          await prisma.$transaction(async (tx) => {
+            const changed = await tx.meeting.updateMany({
+              where: {
+                id: meetingId,
+                processingStatus: {
+                  in: ['QUEUED', 'PARSING', 'ANALYZING', 'FINALIZING'],
+                },
+              },
+              data: { processingStatus: 'QUEUED' },
+            });
+            if (!changed.count)
+              throw new UnrecoverableError('PROCESSING_CANCELLED');
+            await tx.meetingProcessingJob.update({
+              where: { jobId: `meeting-process-${meetingId}` },
+              data: {
+                status: 'QUEUED',
+                stage: 'QUEUED',
+                progress: 5,
+                errorCode: processingErrorCode(err),
+              },
+            });
           });
         }
         throw err;
@@ -287,31 +345,43 @@ export function startMeetingProcessingWorker(): Worker<MeetingJobPayload> | null
     {
       connection,
       concurrency: 2,
-    }
+    },
   );
 
   worker.on('ready', () => {
-    logger.info('BullMQ Meeting Processing Worker is running and ready for jobs.');
+    logger.info(
+      'BullMQ Meeting Processing Worker is running and ready for jobs.',
+    );
   });
 
   worker.on('failed', (job, err) => {
     logger.warn(`Job ${job?.id} attempt failed`, { error: err.message });
   });
+  worker.on('error', (error) =>
+    logger.error('Meeting worker error', { error: error.message }),
+  );
+  worker.on('stalled', (jobId) =>
+    logger.warn('Recovering stalled meeting job', { jobId }),
+  );
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down BullMQ worker gracefully...');
     await worker.close();
+    connection.disconnect();
+    await prisma.$disconnect();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  if (process.argv[1]?.includes('meeting-processing.worker')) {
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+  }
 
   return worker;
 }
 
 // If executed directly as standalone process
 if (process.argv[1]?.includes('meeting-processing.worker')) {
-  startMeetingProcessingWorker();
+  if (!startMeetingProcessingWorker()) process.exitCode = 1;
 }
