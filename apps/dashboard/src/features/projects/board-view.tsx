@@ -668,6 +668,8 @@ export function Evidence({ value }: { value: unknown }) {
         const e = item as {
           quote?: string;
           startMs?: number;
+          speakerName?: string | null;
+          source?: string;
           meetingId?: string;
           kind?: string;
         };
@@ -676,14 +678,15 @@ export function Evidence({ value }: { value: unknown }) {
             key={i}
             className="rounded-lg bg-muted/40 p-3 text-xs leading-relaxed"
           >
-            <p className="whitespace-pre-wrap">{e.quote}</p>
+            {e.quote && <p className="whitespace-pre-wrap">“{e.quote}”</p>}
+            {e.speakerName && <span className="mr-2 font-medium">{e.speakerName}</span>}
             {e.startMs != null && (
               <span className="text-muted-foreground">
                 {Math.floor(e.startMs / 60000)}:
                 {String(Math.floor(e.startMs / 1000) % 60).padStart(2, '0')}
               </span>
             )}
-            {e.kind === 'saved-summary' && (
+            {(e.kind === 'saved-summary' || e.source === 'saved-summary') && (
               <span className="text-muted-foreground">
                 Saved summary evidence
               </span>

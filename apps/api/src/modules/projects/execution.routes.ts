@@ -41,7 +41,7 @@ executionRouter.get('/projects/:id/intelligence', async (req, res, next) => {
               }
             : {}),
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ meeting: { startAt: 'desc' } }, { createdAt: 'desc' }],
         take: 200,
         include: {
           meeting: { select: { id: true, title: true, startAt: true } },

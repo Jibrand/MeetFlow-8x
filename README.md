@@ -109,3 +109,8 @@ The capture system is driven by:
 2. Daemonized background watcher `.agents/watcher.js` polling IDE transcripts.
 3. Strict instructions in `AGENTS.md` and `GEMINI.md`.
 Verification details are documented in `CAPTURE-TEST.md`.
+
+
+### Clear local development data
+
+Run `pnpm db:reset-data` after following the [local reset instructions](docs/testing/reset-data.md). The command refuses remote databases, requires a development database and explicit confirmation, and requires API/workers to be stopped.

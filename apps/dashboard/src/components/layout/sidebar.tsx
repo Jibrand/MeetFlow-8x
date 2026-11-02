@@ -4,7 +4,7 @@ import { PanelLeftClose, PanelLeftOpen, X, AudioLines } from 'lucide-react';
 import { TooltipProvider, Button, cn } from '@meetflow/ui';
 import { SidebarNav } from './sidebar-nav';
 import { ProfileMenu } from './profile-menu';
-import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS } from './nav-config';
+import { PRIMARY_NAV_ITEMS } from './nav-config';
 import { useActionItems } from '../../features/actions/use-action-items';
 import { authAdapter, AuthUser } from '../../features/auth/lib/auth-adapter';
 
@@ -100,13 +100,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           badges={{ '/actions': openCount || undefined }}
         />
         <div className="mt-auto">
-          <SidebarNav
-            label="Secondary"
-            items={SECONDARY_NAV_ITEMS}
-            currentPath={currentPath}
-            collapsed={isCollapsed}
-            onNavigate={onCloseMobile}
-          />
           {!isMobile && isCollapsed && (
             <Button
               variant="ghost"

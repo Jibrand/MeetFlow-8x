@@ -399,6 +399,15 @@ export function ProjectPicker({
 }
 export function GlobalProjectPicker() {
   const value = useProjectContext();
+  const companies = useCompanies();
+  React.useEffect(() => {
+    if (!companies.isSuccess || !value.companyId) return;
+    const company = companies.data.find((item) => item.id === value.companyId);
+    if (!company) setProjectContext('', '');
+    else if (value.projectId && !company.projects.some((item) => item.id === value.projectId)) {
+      setProjectContext(company.id, '');
+    }
+  }, [companies.isSuccess, companies.data, value.companyId, value.projectId]);
   return (
     <div className="w-[min(55vw,420px)]">
       <ProjectPicker

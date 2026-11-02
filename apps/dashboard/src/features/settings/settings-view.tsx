@@ -8,13 +8,11 @@ import {
   CardContent,
   Button,
   Input,
-  Badge,
   toast,
 } from '@meetflow/ui';
-import { Palette, Layers, Radio, Video, User, Loader2 } from 'lucide-react';
+import { Palette, Layers, User, Loader2 } from 'lucide-react';
 import { authAdapter, AuthUser } from '../auth/lib/auth-adapter';
 import { apiClient } from '../../lib/api-client';
-import { CalendarConnection } from '../calendar/calendar-connection';
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -256,48 +254,6 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
-      {/* 4. Integrations Status */}
-      <Card>
-        <CardHeader className="p-4 pb-2">
-          <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm">Integrations & External Services</CardTitle>
-          </div>
-          <CardDescription className="text-xs">
-            Status of calendar connections and automated recording services.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 pt-2 space-y-3">
-          <CalendarConnection />
-
-          <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-primary">
-                <Video className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">Audio & Video Uploads</span>
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Available
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Upload recordings in My Meetings to generate transcripts, notes and action items.
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { window.location.href = '/'; }}
-              className="text-xs h-7"
-            >
-              Open My Meetings
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -50,7 +50,7 @@ const decisionsRoute = createRoute({
 const followupsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/followups',
-  component: () => React.createElement(IntelligenceView, { mode: 'followups' }),
+  beforeLoad: () => { throw redirect({ to: '/board' }); },
 });
 const aiActionsRoute = createRoute({
   getParentRoute: () => rootRoute,

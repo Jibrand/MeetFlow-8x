@@ -323,6 +323,8 @@ export async function persistExecution(
       skipDuplicates: true,
     });
   for (const item of result.actionSuggestions) {
+    if (actions.filter((a) => !a.type.startsWith('COMMITMENT_')).length >= 3) break;
+    if (actions.some((a) => normalize(a.title) === normalize(item.title))) continue;
     const proof = evidence(item.quote, segments, meeting.id);
     if (proof.length)
       actions.push({
@@ -338,11 +340,22 @@ export async function persistExecution(
   if (actions.length) {
     const existing = await tx.aIAction.findMany({
       where: { meetingId: meeting.id },
-      select: { sourceKey: true },
+      select: { sourceKey: true, type: true, title: true },
     });
+    let suggestionCount = existing.filter((a) => !a.type.startsWith('COMMITMENT_')).length;
+    const accepted = [...existing];
     const keys = new Set(existing.map((a) => a.sourceKey));
     const additions = actions
-      .filter((a) => !keys.has(a.sourceKey))
+      .filter((a) => {
+        if (keys.has(a.sourceKey)) return false;
+        keys.add(a.sourceKey);
+        if (!a.type.startsWith('COMMITMENT_')) {
+          if (suggestionCount >= 3 || accepted.some((old) => normalize(old.title) === normalize(a.title) || (old.type === a.type && similarity(old.title, a.title) >= 0.8))) return false;
+          suggestionCount++;
+          accepted.push({ sourceKey: a.sourceKey, type: a.type, title: a.title });
+        }
+        return true;
+      })
       .map((a) => ({ ...a, id: randomUUID() }));
     if (additions.length) {
       await tx.aIAction.createMany({ data: additions, skipDuplicates: true });
@@ -363,12 +376,19 @@ export async function persistExecution(
         await tx.commitmentHistory.createMany({ data: events });
     }
   }
+  await ensureSuggestions(tx, meeting.id);
 }
 export async function refreshSuggestions(meetingId: string) {
-  const meeting = await prisma.meeting.findUniqueOrThrow({
+  return processingTransaction((tx) => ensureSuggestions(tx, meetingId));
+}
+// Uses already-saved intelligence inside the BullMQ finalization transaction; no extra AI call.
+async function ensureSuggestions(tx: Prisma.TransactionClient, meetingId: string) {
+  // Serialize manual refreshes with initial processing and other refresh requests.
+  await tx.meeting.update({ where: { id: meetingId }, data: { updatedAt: new Date() } });
+  const meeting = await tx.meeting.findUniqueOrThrow({
     where: { id: meetingId },
     include: {
-      summary: true,
+      decisions: { orderBy: { createdAt: 'desc' }, take: 3 },
       actionItems: { where: { deletedAt: null, archivedAt: null } },
       commitments: { include: { actionItem: true } },
     },
@@ -384,8 +404,8 @@ export async function refreshSuggestions(meetingId: string) {
         .map((t) => [t.id, t]),
     ).values(),
   ];
-  for (const task of relevant)
-    for (const type of ['FOLLOW_UP_DRAFT', 'IMPLEMENTATION_PLAN'])
+  for (const type of ['IMPLEMENTATION_PLAN', 'FOLLOW_UP_DRAFT'])
+    for (const task of relevant)
       rows.push({
         projectId: meeting.projectId,
         meetingId,
@@ -395,21 +415,23 @@ export async function refreshSuggestions(meetingId: string) {
         evidence: task.evidence as Prisma.InputJsonValue,
         sourceKey: key(type + '|' + task.id),
       });
-  if (meeting.summary)
-    rows.push({
+  if (meeting.decisions.length)
+    rows.splice(1, 0, {
       projectId: meeting.projectId,
       meetingId,
       type: 'DECISION_BRIEF',
-      title: 'Prepare a project decision brief',
+      title: `Prepare a decision brief: ${meeting.decisions[0].title}`,
       instructions:
         'Summarize this meeting’s saved decisions and relevant project history without inventing facts.',
-      evidence: [{ meetingId, source: 'saved-summary' }],
+      evidence: meeting.decisions[0].evidence as Prisma.InputJsonValue,
       sourceKey: key('DECISION_BRIEF|' + meetingId),
     });
-  const existing=await prisma.aIAction.findMany({where:{meetingId},select:{type:true,title:true,sourceKey:true}});
+  const existing=await tx.aIAction.findMany({where:{meetingId},select:{type:true,title:true,sourceKey:true}});
   const alternatives=rows.filter((row)=>!existing.some((old)=>old.sourceKey===row.sourceKey||(old.type===row.type&&similarity(old.title,row.title)>=0.8)));
-  const added = alternatives.length
-    ? await prisma.aIAction.createMany({ data: alternatives, skipDuplicates: true })
+  const slots = Math.max(0, 3 - existing.filter((a) => !a.type.startsWith('COMMITMENT_')).length);
+  const candidates = alternatives.filter((row) => Array.isArray(row.evidence) && row.evidence.length > 0).slice(0, slots);
+  const added = candidates.length
+    ? await tx.aIAction.createMany({ data: candidates, skipDuplicates: true })
     : { count: 0 };
   return { addedCandidates: added.count };
 }

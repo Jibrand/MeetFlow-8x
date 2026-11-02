@@ -1015,6 +1015,7 @@ paths:
       - { in: query, name: search, schema: { type: string, maxLength: 200 } }
     get:
       summary: Read project decisions/conflicts and saved actions; optional meetingId restricts actions
+      description: Decision timeline is ordered by source meeting start time, newest first. Evidence retains the matched transcript quote, speaker and offset when available; proposed plans remain distinct from confirmed decisions.
       security: []
       responses:
         '200':
@@ -1138,7 +1139,8 @@ paths:
           schema: { type: string, format: uuid },
         }
     post:
-      summary: Add deterministic saved-fact alternatives, excluding existing and dismissed suggestions
+      summary: Fill up to three saved draft suggestions from meeting evidence
+      description: Initial BullMQ processing persists 2–3 grounded draft suggestions when evidence permits, in the same transaction as READY. Refresh fills remaining slots from saved facts without an OpenAI call; existing and dismissed suggestions count toward the cap and are never recreated.
       security: []
       requestBody:
         required: true

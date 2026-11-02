@@ -195,3 +195,12 @@ http://localhost:4000/api/docs
 > [!IMPORTANT]
 > **API Documentation Maintenance Directive**:
 > Every future API endpoint addition, signature modification, or schema change must update both `docs/api/openapi.yaml` and `docs/api/README.md` within the same commit.
+
+
+### Focused intelligence UI and suggestion persistence
+
+Initial BullMQ transcript processing saves 2–3 distinct, evidence-backed AI draft suggestions when the transcript supports them, atomically with the summary and READY status. Missing slots use already-saved task/decision evidence, with no additional OpenAI request. `POST /meetings/{id}/suggestions/refresh` fills only remaining slots up to three; saved and dismissed suggestions count toward that cap. Existing records and generated drafts remain in PostgreSQL across reloads and processing retries. Historical meetings with more suggestions are retained unchanged.
+
+Decision Memory orders its timeline by source meeting date and labels confirmed decisions, proposed plans, cancelled decisions and superseded statements separately. Transcript quotes display the parsed speaker and timestamp only when available. Potential conflicts require review. The Follow-up Tracker UI is retired; commitment matching and review APIs remain available for project execution. Calendar/recording integration status cards are removed from the UI; existing integration APIs remain unchanged. Settings is reached from the admin profile menu. This instance has no login/logout session, so Logout is explicitly disabled.
+
+For local development data cleanup, see [reset instructions](../testing/reset-data.md). No API or schema additions are needed for the reset command.

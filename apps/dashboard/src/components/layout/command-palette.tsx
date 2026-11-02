@@ -15,7 +15,6 @@ import {
   CheckSquare,
   Calendar,
   Sparkles,
-  Settings,
   LayoutDashboard,
   ArrowRight,
 } from 'lucide-react';
@@ -53,7 +52,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { label: 'Action Items', path: '/actions', icon: CheckSquare },
     { label: 'Calendar', path: '/calendar', icon: Calendar },
     { label: 'Ask MeetFlow', path: '/ask', icon: Sparkles },
-    { label: 'Settings', path: '/settings', icon: Settings },
   ];
 
   const filteredNav = navigationItems.filter((item) =>

@@ -15,6 +15,7 @@ import {
 import { apiClient } from '../../lib/api-client';
 import { useProjectContext, useExecutionInvalidation } from './project-context';
 import { Evidence } from './board-view';
+const decisionLabel = (status: string): string => ({ CONFIRMED: 'Confirmed decision', PROPOSED: 'Proposed plan', CANCELLED: 'Cancelled', SUPERSEDED: 'Superseded' } as Record<string, string>)[status] ?? status;
 interface Decision {
   id: string;
   title: string;
@@ -63,7 +64,7 @@ export function IntelligenceView({
   meetingId,
   compact = false,
 }: {
-  mode?: 'decisions' | 'followups' | 'actions';
+  mode?: 'decisions' | 'actions';
   projectId?: string;
   meetingId?: string;
   compact?: boolean;
@@ -115,9 +116,7 @@ export function IntelligenceView({
     }
   };
   const actions = (query.data?.actions ?? []).filter((a) =>
-    mode === 'followups'
-      ? ['COMMITMENT_UPDATE','COMMITMENT_MENTION'].includes(a.type)
-      : !['COMMITMENT_UPDATE','COMMITMENT_MENTION'].includes(a.type),
+    !['COMMITMENT_UPDATE', 'COMMITMENT_MENTION'].includes(a.type),
   );
   if (!projectId)
     return (
@@ -125,19 +124,17 @@ export function IntelligenceView({
         Select a project above to view its{' '}
         {mode === 'decisions'
           ? 'decision memory'
-          : mode === 'followups'
-            ? 'follow-up tracker'
-            : 'AI actions'}
+          : 'AI actions'}
         .
       </div>
     );
   return (
     <div
       className={
-        compact ? 'space-y-3' : 'mx-auto max-w-6xl space-y-5 p-4 sm:p-6'
+        compact ? 'flex min-h-0 max-h-[min(36rem,70vh)] flex-col gap-3' : 'mx-auto max-w-6xl space-y-5 p-4 sm:p-6'
       }
     >
-      <header className="flex flex-wrap items-center justify-between gap-2">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
           <h1
             className={
@@ -146,17 +143,15 @@ export function IntelligenceView({
           >
             {mode === 'decisions'
               ? 'Decision Memory'
-              : mode === 'followups'
-                ? 'Follow-up Tracker'
-                : 'AI Actions'}
+              : 'AI Actions'}
           </h1>
           {!compact && (
             <p className="text-xs text-muted-foreground">
-              Project-isolated evidence and human-confirmed execution.
+              {mode === 'decisions' ? 'Decisions and proposed plans, linked to the original conversation.' : 'Useful drafts grounded in your meetings.'}
             </p>
           )}
         </div>
-        {meetingId && (
+        {meetingId && mode === 'actions' && (
           <Button
             size="sm"
             variant="outline"
@@ -174,10 +169,11 @@ export function IntelligenceView({
               })
             }
           >
-            Refresh suggestions
+            {pending === 'refresh' ? 'Refreshing…' : 'Refresh'}
           </Button>
         )}
       </header>
+      <div className={compact ? 'intelligence-scroll min-h-0 overflow-y-auto overscroll-contain pr-1' : undefined} tabIndex={compact ? 0 : undefined} aria-label={compact ? 'AI action suggestions' : undefined}>
       {query.isPending ? (
         <Skeleton className="h-32" />
       ) : query.error ? (
@@ -190,7 +186,7 @@ export function IntelligenceView({
       ) : mode === 'decisions' ? (
         <>
           <section className="space-y-3">
-            <h2 className="text-sm font-medium">Possible changes</h2>
+            <h2 className="text-sm font-medium">Potential conflicts</h2>
             {query.data?.conflicts.length ? (
               query.data.conflicts.map((conflict) => (
                 <article
@@ -198,7 +194,7 @@ export function IntelligenceView({
                   className="space-y-3 rounded-xl border bg-card p-4"
                 >
                   <p className="text-xs font-medium text-muted-foreground">
-                    {conflict.status} · Possible relationship
+                    {conflict.status === 'PENDING' ? 'Needs review · Potential conflict' : conflict.status === 'DISMISSED' ? 'Dismissed relationship' : 'Confirmed change'}
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {[conflict.previousDecision, conflict.newDecision].map(
@@ -206,10 +202,10 @@ export function IntelligenceView({
                         <div key={d.id} className="rounded-lg bg-muted/30 p-3">
                           <p className="text-sm font-medium">{d.title}</p>
                           <p className="mt-1 text-xs leading-relaxed">
-                            {d.description}
+                            {d.description.trim().toLowerCase() !== d.title.trim().toLowerCase() ? d.description : null}
                           </p>
                           <p className="my-2 text-[11px] text-muted-foreground">
-                            {d.status} ·{' '}
+                            {decisionLabel(d.status)} · {d.meeting.title} ·{' '}
                             {new Date(d.meeting.startAt).toLocaleString()}
                           </p>
                           <Evidence value={d.evidence} />
@@ -261,24 +257,24 @@ export function IntelligenceView({
               query.data.decisions.map((decision) => (
                 <article
                   key={decision.id}
-                  className="space-y-3 rounded-xl border bg-card p-4"
+                  className="relative space-y-3 rounded-xl border border-l-2 border-l-primary/40 bg-card p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-medium">{decision.title}</h3>
-                    <span className="text-[11px] text-muted-foreground">
-                      {decision.status}
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${decision.status === 'CONFIRMED' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                      {decisionLabel(decision.status)}
                     </span>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {decision.description}
-                  </p>
+                  {decision.description.trim().toLowerCase() !== decision.title.trim().toLowerCase() && (
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{decision.description}</p>
+                  )}
                   <Link
                     className="text-xs text-primary"
                     to="/meetings/$meetingId"
                     params={{ meetingId: decision.meeting.id }}
                   >
                     {decision.meeting.title} ·{' '}
-                    {new Date(decision.meeting.startAt).toLocaleDateString()}
+                    {new Date(decision.meeting.startAt).toLocaleString()}
                   </Link>
                   <Evidence value={decision.evidence} />
                   {decision.events.map((event) => (
@@ -286,7 +282,7 @@ export function IntelligenceView({
                       key={event.id}
                       className="text-[11px] text-muted-foreground"
                     >
-                      {event.eventType} ·{' '}
+                      {event.eventType.toLowerCase().replaceAll('_', ' ')} ·{' '}
                       {new Date(event.createdAt).toLocaleString()}
                     </p>
                   ))}
@@ -404,13 +400,12 @@ export function IntelligenceView({
             ))
           ) : (
             <p className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
-              {mode === 'followups'
-                ? 'No follow-up proposals in this project.'
-                : 'No grounded suggestions yet. Process a transcript or refresh saved suggestions.'}
+              No grounded suggestions yet. Suggestions are saved automatically when transcript processing finishes.
             </p>
           )}
         </div>
       )}
+      </div>
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}
@@ -508,12 +503,6 @@ export function MeetingExecutionPanel({
         meetingId={meetingId}
         projectId={projectId}
       />
-      <IntelligenceView
-        compact
-        mode="followups"
-        meetingId={meetingId}
-        projectId={projectId}
-      />
-    </div>
+   </div>
   );
 }
