@@ -18,7 +18,7 @@ try {
   assert.equal(statuses.get('scope-1'), 'SUPERSEDED');
   assert.equal(statuses.get('scope-2'), 'SUPERSEDED');
   assert.equal(statuses.get('scope-3'), 'ACTIVE');
-  assert.equal(statuses.get('date-1'), 'SUPERSEDED');
+  assert(['SUPERSEDED', 'WITHDRAWN'].includes(statuses.get('date-1')!));
   assert.equal(statuses.get('date-2'), 'ACTIVE');
   assert.equal(statuses.get('pilot-1'), 'CONDITIONAL');
   assert(relationships.some((r) => r.kind === 'REVISED'));

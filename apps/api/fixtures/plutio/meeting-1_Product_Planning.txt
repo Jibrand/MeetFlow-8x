@@ -1,0 +1,24 @@
+PLUTIO — MEETING 1: WORKSPACE 2.0 PRODUCT PLANNING
+Date: November 3, 2026 | 10:00–10:45 AM EST
+Attendees: Maya Chen (CEO), Daniel Brooks (Product Lead), Sarah Patel (Engineering Lead), Leo Martinez (Design Lead), Nina Roberts (Marketing Lead), Omar Hassan (Customer Success Lead)
+
+Maya: Thanks everyone. We need to agree on what Workspace 2.0 includes. Our target is a public launch on December 15, but let's not confuse the target with a guarantee.
+Daniel: The three features customers ask for most are a unified inbox, automated client onboarding, and AI-generated project status summaries. I propose shipping all three.
+Sarah: All three are possible in theory, but the AI summaries depend on a new event pipeline. We haven't load-tested it. I can commit to a technical feasibility report by November 6, not to all three features shipping.
+Leo: The unified inbox mockups are ready. For onboarding, we need to finish accessibility reviews before engineering starts implementation.
+Omar: Five enterprise customers have specifically requested the unified inbox. One, Northstar Agency, says they may cancel if we don't improve response times. That's a risk, not a confirmed cancellation.
+Nina: If December 15 remains the target, I'd like to announce it on November 10.
+Maya: Not yet. No external launch announcement until engineering confirms feasibility. That is a decision.
+Daniel: Then I suggest we prioritize the unified inbox first, automated onboarding second, and AI summaries third.
+Sarah: That ordering is realistic. But please don't put AI summaries on the committed launch scope yet.
+Maya: Agreed. Decision: the launch scope currently includes unified inbox and automated onboarding. AI summaries are a stretch goal, pending Sarah's feasibility report. December 15 is a provisional target.
+Leo: I will deliver the accessible onboarding design and handoff by November 9.
+Sarah: I will deliver the feasibility report by November 6 and a unified inbox implementation plan by November 10.
+Nina: I'll draft launch messaging by November 12, but won't publish it until approval.
+Omar: I'll interview Northstar Agency and four other customers by November 11 and send a summary of their biggest pain points.
+Daniel: I'll maintain the scope document and update it by November 5.
+Maya: Good. Daniel owns the scope document. Sarah owns technical feasibility. Nina owns messaging, but publication remains blocked. Any objections?
+Everyone: No.
+Maya: One more thing: we are not approving any new infrastructure spend today. Sarah can bring a proposal later if needed.
+
+END OF MEETING 1

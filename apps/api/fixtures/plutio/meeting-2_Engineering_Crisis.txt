@@ -1,0 +1,24 @@
+PLUTIO — MEETING 2: ENGINEERING RISK AND SCOPE REVIEW
+Date: November 10, 2026 | 2:00–2:50 PM EST
+Attendees: Maya Chen (CEO), Daniel Brooks (Product Lead), Sarah Patel (Engineering Lead), Leo Martinez (Design Lead), Nina Roberts (Marketing Lead), Omar Hassan (Customer Success Lead), Priya Shah (Security Engineer)
+
+Daniel: Let's review the November 3 commitments. I updated the scope document on November 5. Leo, where are we on onboarding?
+Leo: The accessible design handoff was completed yesterday, November 9. That action is done.
+Sarah: My feasibility report was delivered November 6. It found that the event pipeline loses messages during high traffic. The unified inbox implementation plan was due today, but I cannot finalize it until we pick a reliable queue design. That action is blocked.
+Maya: Does this affect the December 15 launch?
+Sarah: Yes. We should not promise December 15. My estimate is December 22 at the earliest if we resolve the queue issue this week, but that's an estimate, not a new approved launch date.
+Priya: We also found a permissions bug. Under certain conditions, one workspace user can view another client's attachment. This is a release blocker and must be fixed before any public launch.
+Omar: Northstar Agency confirmed that delayed responses are their biggest pain point. They haven't cancelled. My five-customer interview summary is due tomorrow, November 11, and I'm on track.
+Nina: I drafted some launch copy early. Can I post a teaser without a date?
+Maya: No. The November 3 decision still stands: no external announcement until technical readiness is confirmed.
+Daniel: Maybe we could ship onboarding alone and postpone the inbox?
+Maya: That's an option to evaluate, not a decision. We need a recovery plan first.
+Sarah: I request approval for a managed message queue costing up to $600 per month. It should reduce the reliability risk, but we need benchmarks.
+Maya: Approved, capped at $600 per month, subject to finance review before purchase. This replaces our earlier no-new-spend position only for this queue proposal.
+Priya: I will deliver a reproducible security test and fix recommendation by November 12. Sarah's team will implement the fix, but we need a date after triage.
+Sarah: I will run load tests on the proposed queue and report results by November 13. The unified inbox plan is rescheduled to November 16, assuming the tests pass.
+Daniel: I'll prepare two scope scenarios by November 13: full launch versus onboarding-only launch. Neither is approved yet.
+Nina: I'll keep the messaging draft internal. My original November 12 draft deadline still stands.
+Maya: Decision: December 15 is no longer an approved external target. The launch date is now TBD. Security remediation and queue reliability are release blockers. We'll decide scope and timing in the November 17 leadership review.
+
+END OF MEETING 2

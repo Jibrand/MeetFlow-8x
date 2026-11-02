@@ -2,16 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareDecisions, decisionStatuses, validateRelationships, persistReconciliation, type MemoryDecision } from './decision-reconciliation';
 const complete = vi.hoisted(() => vi.fn());
 vi.mock('../lib/openai-client', () => ({ getOpenAI: () => ({ chat: { completions: { create: complete } } }) }));
-const decision = (id: string, day: number, description: string, originalStatus = 'CONFIRMED'): MemoryDecision => ({
+const sources = new Map<string, string>();
+const decision = (id: string, day: number, description: string, originalStatus = 'CONFIRMED'): MemoryDecision => (sources.set(id, description), {
   id, meetingId: `meeting-${day}`, title: description, description, originalStatus,
   evidence: [{ quote: description, meetingId: `meeting-${day}` }], meeting: { startAt: new Date(`2026-11-${String(day).padStart(2, '0')}T10:00:00Z`) },
 });
-const relation = (previousDecisionId: string, newDecisionId: string, kind: 'SUPERSEDED' | 'REVISED' | 'CONFLICTING' | 'REAFFIRMED' = 'SUPERSEDED') => ({ previousDecisionId, newDecisionId, kind, explanation: 'The later meeting explicitly changes this decision.' });
-beforeEach(() => complete.mockReset());
+const relation = (previousDecisionId: string, newDecisionId: string, kind: 'SUPERSEDED' | 'REVISED' | 'CONFLICTING' | 'REAFFIRMED' = 'SUPERSEDED') => ({ previousDecisionId, newDecisionId, kind, sameSubject: true, incompatible: kind === 'CONFLICTING', previousQuote: sources.get(previousDecisionId) ?? '', newQuote: sources.get(newDecisionId) ?? '', explanation: 'The later meeting explicitly changes this decision.' });
+beforeEach(() => { complete.mockReset(); sources.clear(); });
 describe('cross-meeting decision reconciliation', () => {
+  it('rejects unrelated claims, unsupported evidence and explanations denying a conflict', () => {
+    const rows = [decision('date', 1, 'Public launch date remains TBD.'), decision('pilot', 2, 'Nina may send private pilot emails only after QA sign-off.', 'CONDITIONAL')];
+    const pair = { ...relation('date', 'pilot', 'CONFLICTING'), sameSubject: false, incompatible: false };
+    expect(validateRelationships(rows, [pair])).toEqual([]);
+    expect(validateRelationships(rows, [{ ...pair, kind: 'NO_RELATION' }])).toEqual([]);
+    expect(validateRelationships(rows, [{ ...pair, sameSubject: true, incompatible: true, explanation: 'These decisions do not directly relate.' }])).toEqual([]);
+    expect(validateRelationships(rows, [{ ...pair, sameSubject: true, incompatible: true, previousQuote: 'Invented evidence' }])).toEqual([]);
+  });
   it('compares two CONFIRMED statements even when titles and wording differ', async () => {
-    complete.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ relationships: [relation('a', 'c')] }) } }] });
     const records = [decision('a', 1, 'AI summaries are a stretch goal.'), decision('c', 3, 'AI summaries are removed from launch scope.')];
+    complete.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ relationships: [relation('a', 'c')] }) } }] });
     const result = await compareDecisions(records.slice(0, 1), records.slice(1));
     expect(result).toEqual([relation('a', 'c')]);
     expect(decisionStatuses(records, result.map((r) => ({ ...r, status: r.kind })))).toEqual(new Map([['a', 'SUPERSEDED'], ['c', 'ACTIVE']]));
@@ -27,22 +36,22 @@ describe('cross-meeting decision reconciliation', () => {
     expect([...statuses]).toEqual([['c', 'ACTIVE'], ['a', 'SUPERSEDED'], ['b', 'SUPERSEDED']]);
     expect(records[0].description).toContain('TBD');
   });
-  it('retires intermediate revisions when a replacement references an earlier ancestor', () => {
+  it('does not retire replacement siblings of a compound historical decision', () => {
     const rows = [decision('a', 1, 'Stretch goal'), decision('b', 2, 'English only stretch goal'), decision('c', 3, 'Removed from launch scope')];
     const statuses = decisionStatuses(rows, [{ ...relation('a', 'b'), status: 'REVISED' }, { ...relation('a', 'c'), status: 'SUPERSEDED' }]);
-    expect([...statuses]).toEqual([['a', 'SUPERSEDED'], ['b', 'SUPERSEDED'], ['c', 'ACTIVE']]);
+    expect([...statuses]).toEqual([['a', 'SUPERSEDED'], ['b', 'ACTIVE'], ['c', 'ACTIVE']]);
   });
   it.each(['CONDITIONAL', 'PROPOSED', 'ESTIMATE', 'SUGGESTION'])('%s cannot supersede an approved decision', (status) => {
     const records = [decision('a', 1, 'Pilot approved'), decision('b', 2, 'Nina can send pilot communications only after Daniel confirms QA sign-off.', status)];
     const relationships = validateRelationships(records, [relation('a', 'b')]);
-    expect(relationships[0].kind).toBe('CONFLICTING');
+    expect(relationships).toEqual([]);
     const statuses = decisionStatuses(records, relationships.map((r) => ({ ...r, status: 'PENDING' })));
     expect(statuses.get('a')).toBe('ACTIVE');
     expect(statuses.get('b')).toBe(status);
   });
   it('requires review for equal meeting dates and rejects unknown IDs/self-links/duplicates', () => {
     const records = [decision('a', 1, 'Target A'), decision('b', 1, 'Target B')];
-    expect(validateRelationships(records, [relation('a', 'b'), relation('b', 'a'), relation('a', 'missing'), relation('a', 'a')])).toEqual([{ ...relation('a', 'b'), kind: 'CONFLICTING' }]);
+    expect(validateRelationships(records, [relation('a', 'b'), relation('b', 'a'), relation('a', 'missing'), relation('a', 'a')])).toEqual([]);
   });
   it('preserves a dismissed conflict and restores authority after review', () => {
     const records = [decision('a', 1, 'Target A'), decision('b', 2, 'Target B')];

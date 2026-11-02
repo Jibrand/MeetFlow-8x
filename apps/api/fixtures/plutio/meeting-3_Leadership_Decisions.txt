@@ -1,0 +1,27 @@
+PLUTIO — MEETING 3: LEADERSHIP LAUNCH DECISION
+Date: November 17, 2026 | 11:00–11:55 AM EST
+Attendees: Maya Chen (CEO), Daniel Brooks (Product Lead), Sarah Patel (Engineering Lead), Leo Martinez (Design Lead), Nina Roberts (Marketing Lead), Omar Hassan (Customer Success Lead), Priya Shah (Security Engineer)
+
+Maya: Today we need final decisions on scope, readiness and communications. Sarah, start with the blockers.
+Sarah: The managed queue passed the November 13 load test, and finance approved the $600 monthly budget on November 14. We haven't purchased it yet. The unified inbox implementation plan was completed yesterday, November 16. However, the cross-client attachment permissions bug is still open.
+Priya: I delivered the security reproduction and recommendation on November 12. Engineering has a fix in review. I expect to verify it by November 20, but verification hasn't happened yet.
+Daniel: My two scope scenarios were ready November 13. I recommend a staged release: automated onboarding first, then unified inbox once security verification and reliability checks pass.
+Leo: Design is ready for onboarding. No new design blocker.
+Omar: I delivered the five-customer interview summary on November 11. Four of five customers prioritize inbox reliability over AI summaries. Northstar Agency agreed to join a private pilot, but has not committed to renewing.
+Nina: The messaging draft was completed November 12 and remains unpublished. If we stage the launch, I can prepare separate communications for pilot and general availability.
+Maya: What about the AI-generated project summaries?
+Sarah: We can build them later, but they are not ready. I'd remove them entirely from the Workspace 2.0 launch scope.
+Daniel: Agreed. Let's treat them as a future roadmap item rather than a launch promise.
+Maya: Approved. Decision one: remove AI summaries from the Workspace 2.0 launch scope. This supersedes the November 3 stretch-goal classification.
+Maya: Decision two: approve staged rollout. Automated onboarding enters a private pilot on November 24, contingent on QA sign-off. Unified inbox follows only after Priya verifies the permissions fix and Sarah confirms queue reliability in production-like tests. We are not setting a public general-availability date today.
+Sarah: I'll purchase and configure the managed queue by November 19 now that finance has approved it. I'll complete the production-like reliability check by November 23.
+Priya: I'll verify the attachment permissions fix by November 20. If it fails, I will escalate immediately and the unified inbox remains blocked.
+Daniel: I'll publish the revised internal rollout plan by November 18. I'll also coordinate onboarding pilot QA sign-off by November 23.
+Omar: I'll invite Northstar Agency and two other customers to the November 24 private onboarding pilot by November 20, with the invitation clearly saying pilot, not general availability.
+Nina: I'll prepare private-pilot email copy by November 20 and hold all public launch communications pending a new leadership decision.
+Maya: Decision three: Nina may send private-pilot communications after Daniel confirms QA sign-off, but public launch announcements remain prohibited. The earlier November 10 teaser request is still rejected.
+Leo: Should we announce a public date of December 22 just to give Sales something to say?
+Maya: No. December 22 was Sarah's estimate, never an approved date. Do not communicate it externally.
+Maya: To close: the security issue remains unresolved, queue procurement is approved but not yet executed, and pilot readiness is conditional. No one should report the unified inbox as shipped or the public launch as scheduled. We'll review status on November 23.
+
+END OF MEETING 3

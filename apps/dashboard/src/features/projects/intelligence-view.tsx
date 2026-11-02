@@ -15,7 +15,7 @@ import {
 import { apiClient } from '../../lib/api-client';
 import { useProjectContext, useExecutionInvalidation } from './project-context';
 import { Evidence } from './board-view';
-const decisionLabel = (status: string): string => ({ ACTIVE: 'Active · Confirmed decision', REVISED: 'Revised', CONFLICTING: 'Conflicting · Needs review', CONDITIONAL: 'Conditional · Prerequisite unverified', ESTIMATE: 'Estimate', SUGGESTION: 'Suggestion', CONFIRMED: 'Confirmed decision', PROPOSED: 'Proposed plan', CANCELLED: 'Cancelled', SUPERSEDED: 'Superseded' } as Record<string, string>)[status] ?? status;
+const decisionLabel = (status: string): string => ({ WITHDRAWN: 'Withdrawn', ACTIVE: 'Active · Confirmed decision', REVISED: 'Revised', CONFLICTING: 'Conflicting · Needs review', CONDITIONAL: 'Conditional · Prerequisite unverified', ESTIMATE: 'Estimate', SUGGESTION: 'Suggestion', CONFIRMED: 'Confirmed decision', PROPOSED: 'Proposed plan', CANCELLED: 'Cancelled', SUPERSEDED: 'Superseded' } as Record<string, string>)[status] ?? status;
 interface Decision {
   id: string;
   title: string;
@@ -200,7 +200,7 @@ export function IntelligenceView({
                   className="space-y-3 rounded-xl border bg-card p-4"
                 >
                   <p className="text-xs font-medium text-muted-foreground">
-                    {conflict.status === 'PENDING' ? 'Needs review · Potential conflict' : conflict.status === 'DISMISSED' ? 'Dismissed relationship' : conflict.status === 'REVISED' ? 'Revised decision' : conflict.status === 'REAFFIRMED' ? 'Reaffirmed decision' : 'Confirmed change · Superseded'}
+                    {conflict.status === 'PENDING' ? 'Needs review · Potential conflict' : conflict.status === 'DISMISSED' ? 'Dismissed relationship' : conflict.status === 'WITHDRAWN' ? 'Previous decision withdrawn' : conflict.status === 'REVISED' ? 'Revised decision' : conflict.status === 'REAFFIRMED' ? 'Reaffirmed decision' : 'Confirmed change · Superseded'}
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {[conflict.previousDecision, conflict.newDecision].map(
@@ -220,7 +220,7 @@ export function IntelligenceView({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {conflict.explanation}
+                    {conflict.explanation.replace(/^\[memory-v2\]\s*/, '')}
                   </p>
                   {conflict.status === 'PENDING' && (
                     <div className="flex gap-2">

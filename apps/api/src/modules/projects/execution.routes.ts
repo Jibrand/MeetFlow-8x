@@ -1,4 +1,4 @@
-import { persistReconciliation } from '../../services/decision-reconciliation';
+import { MEMORY_VERSION, persistReconciliation } from '../../services/decision-reconciliation';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
@@ -51,7 +51,7 @@ executionRouter.get('/projects/:id/intelligence', async (req, res, next) => {
         },
       }),
       prisma.decisionConflict.findMany({
-        where: { projectId: project.id },
+        where: { projectId: project.id, status: { not: 'INVALIDATED' }, OR: [{ explanation: { startsWith: MEMORY_VERSION } }, { status: 'CONFIRMED' }, { status: 'DISMISSED' }] },
         orderBy: { createdAt: 'desc' },
         take: 200,
         include: {
@@ -88,7 +88,11 @@ executionRouter.get('/projects/:id/intelligence', async (req, res, next) => {
         },
       }),
     ]);
-    const legacy = decisions.some((d) => ['CONFIRMED', 'CANCELLED'].includes(d.status));
+    const [stale, missing] = await Promise.all([
+      prisma.decisionConflict.findFirst({ where: { projectId: project.id, status: { notIn: ['DISMISSED', 'INVALIDATED'] }, NOT: { explanation: { startsWith: MEMORY_VERSION } } }, select: { id: true } }),
+      prisma.meeting.findFirst({ where: { projectId: project.id, processingStatus: 'READY', summary: { isNot: null }, processingJobs: { none: { jobId: { startsWith: 'memory-v2-' } } } }, select: { id: true } }),
+    ]);
+    const legacy = Boolean(stale || missing) || decisions.some((d) => ['CONFIRMED', 'CANCELLED'].includes(d.status));
     const reconciliation = legacy ? project.needsReview ? 'unavailable' : await scheduleLegacyReconciliation(project.id, req.workspaceId!) : null;
     res.json({ success: true, data: { decisions, conflicts, actions, reconciliation } });
   } catch (e) {
